@@ -5,7 +5,7 @@
 
 const SUPABASE_CONFIG = {
   // Ve a: Supabase Dashboard → Settings → API → Project URL
-  url: 'https://zqzmmnvkerwtnuwlvvmx.supabase.co/rest/v1/',
+  url: 'https://zqzmmnvkerwtnuwlvvmx.supabase.co',
 
   // Ve a: Supabase Dashboard → Settings → API → anon/public key
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpxem1tbnZrZXJ3dG51d2x2dm14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NDI0MzcsImV4cCI6MjA5NjIxODQzN30.g38bxkGiY0XDAD7WQpMP6n-JZ0UGqzzJIe1MgMo6JZs',
