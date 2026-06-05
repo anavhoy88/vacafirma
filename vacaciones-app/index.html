@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solicitud de Vacaciones — Sistema de Firma Digital</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- pdf-lib -->
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════ HEADER -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="logo-block">
+        <span class="logo-icon">✦</span>
+        <div>
+          <span class="logo-title">VacaFirma</span>
+          <span class="logo-sub">Sistema de solicitud con firma digital</span>
+        </div>
+      </div>
+      <div class="auth-block" id="authBlock">
+        <span class="auth-status" id="authStatus">Sin sesión</span>
+        <button class="btn-outline" id="btnLogin">Acceder</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════ MAIN -->
+  <main class="app-main">
+
+    <!-- ── LOGIN PANEL ── -->
+    <section class="panel" id="panelLogin">
+      <div class="panel-inner login-panel">
+        <div class="login-art">
+          <div class="art-ring r1"></div>
+          <div class="art-ring r2"></div>
+          <div class="art-ring r3"></div>
+          <span class="art-icon">✦</span>
+        </div>
+        <div class="login-content">
+          <h1 class="display-title">Solicitud de<br/><em>Vacaciones</em></h1>
+          <p class="login-desc">Accede con tu correo institucional para crear, firmar o aprobar solicitudes de vacaciones con certificado digital.</p>
+          <div class="input-group">
+            <label for="loginEmail">Correo institucional</label>
+            <input type="email" id="loginEmail" placeholder="nombre@organismo.es" autocomplete="email" />
+          </div>
+          <button class="btn-primary" id="btnSendMagicLink">
+            <span>Enviar enlace de acceso</span>
+            <span class="btn-icon">→</span>
+          </button>
+          <p class="login-note" id="loginMessage"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── DASHBOARD ── -->
+    <section class="panel hidden" id="panelDashboard">
+      <div class="dashboard-header">
+        <div>
+          <h2 class="section-title">Mis solicitudes</h2>
+          <p class="section-sub" id="userRoleBadge"></p>
+        </div>
+        <button class="btn-primary" id="btnNuevaSolicitud">+ Nueva solicitud</button>
+      </div>
+
+      <!-- Tabla de solicitudes -->
+      <div class="table-wrapper">
+        <table class="solicitudes-table">
+          <thead>
+            <tr>
+              <th>Empleado</th>
+              <th>Inicio</th>
+              <th>Fin</th>
+              <th>Dirección</th>
+              <th>Estado</th>
+              <th>Firma empleado</th>
+              <th>Firma jefe 1</th>
+              <th>Firma jefe 2</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaSolicitudes">
+            <tr class="empty-row">
+              <td colspan="9">Cargando solicitudes…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── FORMULARIO NUEVA SOLICITUD ── -->
+    <section class="panel hidden" id="panelFormulario">
+      <div class="form-header">
+        <button class="btn-back" id="btnVolverDashboard">← Volver</button>
+        <h2 class="section-title">Nueva solicitud de vacaciones</h2>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-card">
+          <h3 class="card-title">Datos de las vacaciones</h3>
+
+          <div class="field-row">
+            <div class="input-group">
+              <label for="fechaInicio">Fecha de inicio</label>
+              <input type="date" id="fechaInicio" />
+            </div>
+            <div class="input-group">
+              <label for="fechaFin">Fecha de fin</label>
+              <input type="date" id="fechaFin" />
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="direccion">Dirección durante las vacaciones</label>
+            <input type="text" id="direccion" placeholder="Calle, número, ciudad, provincia…" />
+          </div>
+
+          <div class="input-group">
+            <label for="observaciones">Observaciones (opcional)</label>
+            <textarea id="observaciones" rows="3" placeholder="Cualquier nota adicional…"></textarea>
+          </div>
+        </div>
+
+        <div class="form-card preview-card">
+          <h3 class="card-title">Vista previa del documento</h3>
+          <div class="pdf-preview" id="pdfPreview">
+            <span class="preview-placeholder">Rellena los datos para previsualizar el PDF</span>
+          </div>
+          <button class="btn-secondary" id="btnPreview">Actualizar vista previa</button>
+        </div>
+      </div>
+
+      <!-- Firma del empleado -->
+      <div class="sign-section">
+        <h3 class="card-title">Firma digital del empleado</h3>
+        <p class="sign-desc">Necesitarás AutoFirma instalado y tu DNIe o certificado digital en el lector.</p>
+        <div class="sign-status" id="signStatusEmpleado">
+          <span class="sign-dot pending"></span>
+          <span>Pendiente de firma</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn-sign" id="btnGenerarYFirmar">
+            <span class="sign-icon">🖊</span>
+            Generar PDF y firmar con AutoFirma
+          </button>
+        </div>
+        <div class="autofirma-info" id="autofirmaInfo" style="display:none">
+          <p>⚠️ Si AutoFirma no se abre automáticamente, <a href="#" id="linkDescargaAutofirma" target="_blank">descárgalo aquí</a> e inténtalo de nuevo.</p>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-outline" id="btnCancelar">Cancelar</button>
+        <button class="btn-primary disabled" id="btnEnviar" disabled>Enviar solicitud firmada</button>
+      </div>
+    </section>
+
+    <!-- ── PANEL DE FIRMA PARA JEFES ── -->
+    <section class="panel hidden" id="panelFirmaJefe">
+      <div class="form-header">
+        <button class="btn-back" id="btnVolverDashboard2">← Volver</button>
+        <h2 class="section-title">Aprobar y firmar solicitud</h2>
+      </div>
+
+      <div class="jefe-grid">
+        <div class="form-card">
+          <h3 class="card-title">Detalles de la solicitud</h3>
+          <div class="detail-table" id="detallesSolicitud"></div>
+        </div>
+        <div class="form-card">
+          <h3 class="card-title">Estado de firmas</h3>
+          <div class="firmas-estado" id="firmasEstado"></div>
+        </div>
+      </div>
+
+      <div class="sign-section">
+        <h3 class="card-title">Tu firma digital</h3>
+        <p class="sign-desc">Al firmar confirmas la aprobación de este período vacacional.</p>
+        <div class="sign-status" id="signStatusJefe">
+          <span class="sign-dot pending"></span>
+          <span>Pendiente de tu firma</span>
+        </div>
+        <button class="btn-sign" id="btnFirmarJefe">
+          <span class="sign-icon">🖊</span>
+          Firmar con AutoFirma (DNIe / certificado digital)
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════════════════════════════════════════════ TOAST -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- ═══════════════════════════════════════════════════ MODAL AutoFirma -->
+  <div class="modal-overlay hidden" id="modalAutofirma">
+    <div class="modal">
+      <div class="modal-icon">🖊</div>
+      <h3>Iniciando AutoFirma…</h3>
+      <p>Se está intentando abrir AutoFirma en tu equipo. Este proceso puede tardar unos segundos.</p>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <p class="modal-sub">Si no se abre, asegúrate de que AutoFirma está instalado y pulsa "Reintentar".</p>
+      <div class="modal-actions">
+        <button class="btn-outline" id="btnModalCancelar">Cancelar</button>
+        <button class="btn-primary" id="btnModalReintentar">Reintentar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/pdf-generator.js"></script>
+  <script src="js/autofirma.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
