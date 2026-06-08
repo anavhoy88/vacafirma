@@ -18,7 +18,7 @@ let _autoscriptInicializado = false;
   // Inicializa AutoScript sin applet (usa la app nativa instalada)
   AutoScript.cargarAppAfirma('');
   _autoscriptInicializado = true;
-}
+
 
 // ── API PÚBLICA ───────────────────────────────────────────────
 
