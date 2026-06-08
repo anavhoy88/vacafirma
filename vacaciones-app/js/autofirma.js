@@ -1,115 +1,77 @@
 // ═══════════════════════════════════════════════════════════════
-// autofirma.js — Integración con AutoFirma usando autoscript.js oficial
+// autofirma.js — Integración con AutoFirma usando autoscript.js
 //
-// La integración correcta con AutoFirma 1.9 se hace a través de
-// autoscript.js (librería oficial del MINHAP/FNMT), que gestiona
-// internamente el puerto aleatorio y el protocolo WebSocket.
-//
-// autoscript.js se carga dinámicamente desde la CDN oficial.
+// autoscript.js debe estar cargado antes que este fichero.
+// Se inicializa con cargarAppAfirma() antes de firmar.
 // ═══════════════════════════════════════════════════════════════
 
 const AUTOFIRMA = {
-  // URL de descarga de AutoFirma
   DOWNLOAD_URL: 'https://firmaelectronica.gob.es/Home/Descargas.html',
-  // URL oficial de autoscript.js (librería de integración del Gobierno)
-  AUTOSCRIPT_URL: 'https://administracionelectronica.gob.es/ctt/resources/Soluciones/138/descargas/autoscript.js',
-  // Timeout en ms
-  TIMEOUT: 60000,
+  TIMEOUT: 120000,
 };
 
-// ── CARGA DINÁMICA DE AUTOSCRIPT.JS ───────────────────────────
+// ── INICIALIZACIÓN ────────────────────────────────────────────
 
-let autoscriptCargado = false;
+let _autoscriptInicializado = false;
 
-function cargarAutoscript() {
-  return new Promise((resolve, reject) => {
-    // Si ya está disponible, resolver inmediatamente
-    if (typeof AutoScript !== 'undefined' && AutoScript !== null) {
-      resolve();
-      return;
-    }
-    // Buscar el script ya cargado en el DOM
-    const scriptExistente = document.querySelector('script[src*="autoscript"]');
-    if (scriptExistente) {
-      // Dar tiempo a que termine de ejecutarse
-      setTimeout(() => {
-        if (typeof AutoScript !== 'undefined' && AutoScript !== null) {
-          resolve();
-        } else {
-          reject(new AutofirmaError('AutoScript cargado pero no disponible. Recarga la página.', 'LOAD_ERROR'));
-        }
-      }, 500);
-      return;
-    }
-    reject(new AutofirmaError('autoscript.js no está incluido en la página.', 'LOAD_ERROR'));
-  });
+function inicializarAutoscript() {
+  if (_autoscriptInicializado) return;
+  if (typeof AutoScript === 'undefined') {
+    throw new AutofirmaError('autoscript.js no está cargado.', 'LOAD_ERROR');
+  }
+  // Inicializa AutoScript sin applet (usa la app nativa instalada)
+  AutoScript.cargarAppAfirma('');
+  _autoscriptInicializado = true;
 }
 
 // ── API PÚBLICA ───────────────────────────────────────────────
 
-/**
- * Firma un PDF con AutoFirma (primera firma — empleado).
- * @param {Uint8Array} pdfBytes
- * @param {Object}     opciones  { rol, solicitudId }
- * @returns {Promise<{pdfFirmado: Uint8Array, certInfo: Object}>}
- */
 async function firmarConAutofirma(pdfBytes, opciones = {}) {
   const { rol = 'empleado', solicitudId = 'nuevo' } = opciones;
 
-  await cargarAutoscript();
+  inicializarAutoscript();
 
-  const pdfBase64 = uint8ArrayToBase64(pdfBytes);
-  const extraParams = buildExtraParams(rol, solicitudId);
+  const pdfBase64    = uint8ArrayToBase64(pdfBytes);
+  const extraParams  = buildExtraParams(rol, solicitudId);
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new AutofirmaError('Tiempo de espera agotado. Inténtalo de nuevo.', 'TIMEOUT'));
+      reject(new AutofirmaError('Tiempo de espera agotado.', 'TIMEOUT'));
     }, AUTOFIRMA.TIMEOUT);
 
-    try {
-      AutoScript.sign(
-        pdfBase64,           // Datos en base64
-        'SHA512withRSA',     // Algoritmo
-        'PAdES',             // Formato de firma
-        extraParams,         // Parámetros adicionales
-        // Callback de éxito
-        function(signatureB64, certB64) {
-          clearTimeout(timer);
-          resolve({
-            pdfFirmado: base64ToUint8Array(signatureB64),
-            certInfo:   { raw: certB64 || '', ts: new Date().toISOString() },
-          });
-        },
-        // Callback de error
-        function(errorType, errorMessage) {
-          clearTimeout(timer);
-          if (errorType === 'es.gob.afirma.core.AOCancelledOperationException' ||
-              errorMessage?.toLowerCase().includes('cancel')) {
-            reject(new AutofirmaError('Firma cancelada por el usuario.', 'CANCELLED'));
-          } else {
-            reject(new AutofirmaError(
-              `Error de AutoFirma [${errorType}]: ${errorMessage}`,
-              'API_ERROR'
-            ));
-          }
+    AutoScript.sign(
+      pdfBase64,
+      'SHA512withRSA',
+      'PAdES',
+      extraParams,
+      function(signatureB64, certB64) {
+        clearTimeout(timer);
+        resolve({
+          pdfFirmado: base64ToUint8Array(signatureB64),
+          certInfo:   { raw: certB64 || '', ts: new Date().toISOString() },
+        });
+      },
+      function(errorType, errorMessage) {
+        clearTimeout(timer);
+        if (errorType && errorType.indexOf('Cancel') !== -1) {
+          reject(new AutofirmaError('Firma cancelada.', 'CANCELLED'));
+        } else {
+          reject(new AutofirmaError(
+            (errorMessage || errorType || 'Error desconocido'),
+            'API_ERROR'
+          ));
         }
-      );
-    } catch (e) {
-      clearTimeout(timer);
-      reject(new AutofirmaError('Error al invocar AutoFirma: ' + e.message, 'INVOKE_ERROR'));
-    }
+      }
+    );
   });
 }
 
-/**
- * Co-firma un PDF ya firmado (jefe 1 o jefe 2).
- */
 async function cofirmarConAutofirma(pdfBytes, opciones = {}) {
   const { rol = 'jefe_1', solicitudId = '' } = opciones;
 
-  await cargarAutoscript();
+  inicializarAutoscript();
 
-  const pdfBase64 = uint8ArrayToBase64(pdfBytes);
+  const pdfBase64   = uint8ArrayToBase64(pdfBytes);
   const extraParams = buildExtraParams(rol, solicitudId);
 
   return new Promise((resolve, reject) => {
@@ -117,52 +79,38 @@ async function cofirmarConAutofirma(pdfBytes, opciones = {}) {
       reject(new AutofirmaError('Tiempo de espera agotado.', 'TIMEOUT'));
     }, AUTOFIRMA.TIMEOUT);
 
-    try {
-      AutoScript.coSign(
-        pdfBase64,
-        'SHA512withRSA',
-        'PAdES',
-        extraParams,
-        function(signatureB64, certB64) {
-          clearTimeout(timer);
-          resolve({
-            pdfFirmado: base64ToUint8Array(signatureB64),
-            certInfo:   { raw: certB64 || '', ts: new Date().toISOString() },
-          });
-        },
-        function(errorType, errorMessage) {
-          clearTimeout(timer);
-          if (errorType?.includes('Cancel') || errorMessage?.toLowerCase().includes('cancel')) {
-            reject(new AutofirmaError('Firma cancelada.', 'CANCELLED'));
-          } else {
-            reject(new AutofirmaError(
-              `Error [${errorType}]: ${errorMessage}`,
-              'API_ERROR'
-            ));
-          }
+    AutoScript.coSign(
+      pdfBase64,
+      null,           // datos originales — null para PAdES (ya están en el PDF)
+      'SHA512withRSA',
+      'PAdES',
+      extraParams,
+      function(signatureB64, certB64) {
+        clearTimeout(timer);
+        resolve({
+          pdfFirmado: base64ToUint8Array(signatureB64),
+          certInfo:   { raw: certB64 || '', ts: new Date().toISOString() },
+        });
+      },
+      function(errorType, errorMessage) {
+        clearTimeout(timer);
+        if (errorType && errorType.indexOf('Cancel') !== -1) {
+          reject(new AutofirmaError('Firma cancelada.', 'CANCELLED'));
+        } else {
+          reject(new AutofirmaError(
+            (errorMessage || errorType || 'Error desconocido'),
+            'API_ERROR'
+          ));
         }
-      );
-    } catch (e) {
-      clearTimeout(timer);
-      reject(new AutofirmaError('Error al invocar AutoFirma: ' + e.message, 'INVOKE_ERROR'));
-    }
+      }
+    );
   });
 }
 
-/**
- * Comprueba si AutoFirma está disponible en el sistema.
- * Con autoscript.js esto se gestiona automáticamente.
- */
 async function checkAutofirma() {
-  try {
-    await cargarAutoscript();
-    return typeof AutoScript !== 'undefined';
-  } catch {
-    return false;
-  }
+  return typeof AutoScript !== 'undefined';
 }
 
-/** Intenta abrir AutoFirma vía protocolo afirma:// */
 function intentarAbrirAutofirma() {
   window.location.href = 'afirma://service';
 }
@@ -170,8 +118,7 @@ function intentarAbrirAutofirma() {
 // ── HELPERS ──────────────────────────────────────────────────
 
 function buildExtraParams(rol, solicitudId) {
-  const posX = obtenerPosicionX(rol);
-  // Formato requerido por autoscript.js: pares clave=valor separados por \n
+  const posX = { 'empleado': 52, 'jefe_1': 249, 'jefe_2': 446 }[rol] || 52;
   return [
     'signingCertificateV2=true',
     `signatureReason=Solicitud de vacaciones - ${rol}`,
@@ -184,10 +131,6 @@ function buildExtraParams(rol, solicitudId) {
   ].join('\n');
 }
 
-function obtenerPosicionX(rol) {
-  return { 'empleado': 52, 'jefe_1': 249, 'jefe_2': 446 }[rol] || 52;
-}
-
 function uint8ArrayToBase64(bytes) {
   let binary = '';
   const chunk = 8192;
@@ -198,7 +141,8 @@ function uint8ArrayToBase64(bytes) {
 }
 
 function base64ToUint8Array(base64) {
-  const binary = atob(base64);
+  const clean  = base64.replace(/\s/g, '');
+  const binary = atob(clean);
   const bytes  = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
@@ -207,7 +151,7 @@ function base64ToUint8Array(base64) {
 class AutofirmaError extends Error {
   constructor(message, code) {
     super(message);
-    this.name  = 'AutofirmaError';
-    this.code  = code;
+    this.name = 'AutofirmaError';
+    this.code = code;
   }
 }
