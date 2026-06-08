@@ -14,11 +14,7 @@ const AUTOFIRMA = {
 
 let _autoscriptInicializado = false;
 
-function inicializarAutoscript() {
-  if (_autoscriptInicializado) return;
-  if (typeof AutoScript === 'undefined') {
-    throw new AutofirmaError('autoscript.js no está cargado.', 'LOAD_ERROR');
-  }
+
   // Inicializa AutoScript sin applet (usa la app nativa instalada)
   AutoScript.cargarAppAfirma('');
   _autoscriptInicializado = true;
@@ -29,10 +25,15 @@ function inicializarAutoscript() {
 async function firmarConAutofirma(pdfBytes, opciones = {}) {
   const { rol = 'empleado', solicitudId = 'nuevo' } = opciones;
 
-  inicializarAutoscript();
+  if (typeof AutoScript === 'undefined') {
+    throw new AutofirmaError('autoscript.js no está cargado.', 'LOAD_ERROR');
+  }
 
-  const pdfBase64    = uint8ArrayToBase64(pdfBytes);
-  const extraParams  = buildExtraParams(rol, solicitudId);
+  // Inicializa el cliente nativo
+  AutoScript.cargarAppAfirma(window.location.origin);
+
+  const pdfBase64   = uint8ArrayToBase64(pdfBytes);
+  const extraParams = buildExtraParams(rol, solicitudId);
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
