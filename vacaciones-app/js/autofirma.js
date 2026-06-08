@@ -23,30 +23,14 @@ let autoscriptCargado = false;
 
 function cargarAutoscript() {
   return new Promise((resolve, reject) => {
-    if (autoscriptCargado && typeof AutoScript !== 'undefined') {
+    if (typeof AutoScript !== 'undefined') {
       resolve();
-      return;
-    }
-
-    // Intentar con la URL oficial
-    const script = document.createElement('script');
-    script.src = AUTOFIRMA.AUTOSCRIPT_URL;
-    script.onload = () => {
-      autoscriptCargado = true;
-      resolve();
-    };
-    script.onerror = () => {
-      // Fallback: cargar desde CDN alternativa del CTT
-      const script2 = document.createElement('script');
-      script2.src = 'https://sede.carm.es/cryptoApplet/ayuda/recursos/autoscript.js';
-      script2.onload = () => { autoscriptCargado = true; resolve(); };
-      script2.onerror = () => reject(new AutofirmaError(
-        'No se pudo cargar la librería de AutoFirma. Comprueba tu conexión.',
+    } else {
+      reject(new AutofirmaError(
+        'La librería AutoScript no está disponible.',
         'LOAD_ERROR'
       ));
-      document.head.appendChild(script2);
-    };
-    document.head.appendChild(script);
+    }
   });
 }
 
