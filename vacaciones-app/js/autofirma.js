@@ -23,14 +23,25 @@ let autoscriptCargado = false;
 
 function cargarAutoscript() {
   return new Promise((resolve, reject) => {
-    if (typeof AutoScript !== 'undefined') {
+    // Si ya está disponible, resolver inmediatamente
+    if (typeof AutoScript !== 'undefined' && AutoScript !== null) {
       resolve();
-    } else {
-      reject(new AutofirmaError(
-        'La librería AutoScript no está disponible.',
-        'LOAD_ERROR'
-      ));
+      return;
     }
+    // Buscar el script ya cargado en el DOM
+    const scriptExistente = document.querySelector('script[src*="autoscript"]');
+    if (scriptExistente) {
+      // Dar tiempo a que termine de ejecutarse
+      setTimeout(() => {
+        if (typeof AutoScript !== 'undefined' && AutoScript !== null) {
+          resolve();
+        } else {
+          reject(new AutofirmaError('AutoScript cargado pero no disponible. Recarga la página.', 'LOAD_ERROR'));
+        }
+      }, 500);
+      return;
+    }
+    reject(new AutofirmaError('autoscript.js no está incluido en la página.', 'LOAD_ERROR'));
   });
 }
 
