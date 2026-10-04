@@ -350,6 +350,7 @@ async function handleEnviarSolicitud() {
     const nombre = state.profile?.nombre_completo || state.user?.email;
 
     // 1. Crear registro en BD
+    console.log('[VacaFirma] Creando solicitud en BD...');
     const solicitud = await crearSolicitud({
       empleadoId:     state.user.id,
       empleadoNombre: nombre,
@@ -358,17 +359,22 @@ async function handleEnviarSolicitud() {
       direccion:      datos.direccion,
       observaciones:  datos.observaciones,
     });
+    console.log('[VacaFirma] Solicitud creada:', solicitud.id);
 
     // 2. Subir PDF firmado a Storage
     const path = buildPDFPath(solicitud.id);
+    console.log('[VacaFirma] Subiendo PDF a Storage:', path);
     await subirPDF(path, state.pdfFirmadoBytes);
+    console.log('[VacaFirma] PDF subido OK');
 
     // 3. Actualizar registro con ruta PDF y firma empleado
-    await actualizarSolicitud(solicitud.id, {
+    console.log('[VacaFirma] Actualizando registro con pdf_path...');
+    const updated = await actualizarSolicitud(solicitud.id, {
       pdf_path:       path,
       firma_empleado: true,
       estado:         ESTADOS.PENDIENTE_JEFE1,
     });
+    console.log('[VacaFirma] Registro actualizado:', updated);
 
     toast('¡Solicitud enviada correctamente! Los jefes recibirán notificación.', 'success');
     mostrarDashboard();
