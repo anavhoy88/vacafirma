@@ -118,16 +118,23 @@ function intentarAbrirAutofirma() {
 // ── HELPERS ──────────────────────────────────────────────────
 
 function buildExtraParams(rol, solicitudId) {
-  var posX = { 'empleado': 52, 'jefe_1': 249, 'jefe_2': 446 }[rol] || 52;
+  // Coordenadas medidas directamente del PDF generado (puntos PDF, origen abajo-izq)
+  // Cuadros de firma: Empleado x=58-207, Jefe1 x=223-372, Jefe2 x=388-537, Y=322-382
+  var coords = {
+    'empleado': { llx: 58,  lly: 322, urx: 207, ury: 382 },
+    'jefe_1':   { llx: 223, lly: 322, urx: 372, ury: 382 },
+    'jefe_2':   { llx: 388, lly: 322, urx: 537, ury: 382 }
+  };
+  var c = coords[rol] || coords['empleado'];
   return [
     'signingCertificateV2=true',
     'signatureReason=Solicitud de vacaciones - ' + rol,
     'signatureContactInfo=VacaFirma - ' + solicitudId,
     'signaturePage=last',
-    'signaturePositionOnPageLowerLeftX=' + posX,
-    'signaturePositionOnPageLowerLeftY=220',
-    'signaturePositionOnPageUpperRightX=' + (posX + 155),
-    'signaturePositionOnPageUpperRightY=290'
+    'signaturePositionOnPageLowerLeftX=' + c.llx,
+    'signaturePositionOnPageLowerLeftY=' + c.lly,
+    'signaturePositionOnPageUpperRightX=' + c.urx,
+    'signaturePositionOnPageUpperRightY=' + c.ury
   ].join('\n');
 }
 
