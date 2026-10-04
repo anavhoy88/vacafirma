@@ -481,26 +481,61 @@ function cerrarModalAutofirma() {
 }
 
 async function mostrarPreviewCanvas(pdfBytes) {
-  // Renderiza la primera página del PDF como imagen usando pdf-lib
-  // Para un render real se usaría pdf.js, aquí mostramos un placeholder visual
   const preview = $('pdfPreview');
-  preview.innerHTML = `
-    <div style="text-align:center; padding: 1.5rem;">
-      <div style="font-size:3rem">📄</div>
-      <p style="font-size:0.85rem; color: var(--text-muted); margin-top:0.5rem;">
-        PDF generado: ${(pdfBytes.byteLength / 1024).toFixed(1)} KB
-      </p>
-      <p style="font-size:0.75rem; color: var(--text-light); margin-top:0.25rem;">
-        Para previsualizar el documento descárgalo o usa el visor del navegador.
-      </p>
-      <button onclick="descargarLocalPDF()" style="
-        margin-top:1rem; padding:0.4rem 1rem;
-        background:var(--navy); color:white;
-        border:none; border-radius:6px; cursor:pointer; font-size:0.8rem;">
-        Ver PDF
-      </button>
-    </div>
-  `;
+  preview.innerHTML = '<span class="preview-placeholder">Cargando vista previa…</span>';
+
+  try {
+    // Cargar pdf.js desde CDN si no está ya disponible
+    if (!window.pdfjsLib) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    }
+
+    const pdfDoc = await window.pdfjsLib.getDocument({ data: pdfBytes }).promise;
+    const numPages = pdfDoc.numPages;
+
+    // Contenedor scrollable
+    preview.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'width:100%;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0;box-sizing:border-box;';
+
+    for (let i = 1; i <= numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const scale = (preview.clientWidth - 24) / page.getViewport({ scale: 1 }).width;
+      const viewport = page.getViewport({ scale: Math.max(scale, 0.5) });
+
+      const canvas = document.createElement('canvas');
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.cssText = 'max-width:100%;box-shadow:0 1px 4px rgba(0,0,0,0.15);border-radius:2px;';
+
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      wrapper.appendChild(canvas);
+    }
+
+    // Botón de descarga bajo el preview
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;justify-content:center;padding:8px 0 4px;';
+    const btn = document.createElement('button');
+    btn.textContent = '⬇ Descargar PDF';
+    btn.style.cssText = 'padding:0.35rem 1rem;background:var(--navy);color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;';
+    btn.onclick = descargarLocalPDF;
+    btnRow.appendChild(btn);
+    wrapper.appendChild(btnRow);
+
+    preview.appendChild(wrapper);
+
+  } catch (err) {
+    console.error('Error renderizando PDF:', err);
+    preview.innerHTML = '<span class="preview-placeholder">No se pudo mostrar la vista previa.</span>';
+  }
 }
 
 // Descarga el PDF directamente sin navegar ni cerrar la app
@@ -516,39 +551,4 @@ window.descargarLocalPDF = function() {
     var blob = new Blob([bytes], { type: 'application/pdf' });
     var url = URL.createObjectURL(blob);
     window._pdfPreviewUrl = url;
-
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'solicitud-vacaciones.pdf';
-    a.setAttribute('target', '_blank');
-    a.setAttribute('rel', 'noopener');
-    // No añadir al DOM para evitar interferencias con eventos del formulario
-    // Usar dispatchEvent para evitar bubbling
-    var clickEvt = new MouseEvent('click', { bubbles: false, cancelable: true, view: window });
-    a.dispatchEvent(clickEvt);
-
-    // Liberar la URL tras la descarga
-    setTimeout(function() { URL.revokeObjectURL(url); window._pdfPreviewUrl = null; }, 10000);
-  } catch (e) {
-    console.error('Error al descargar PDF:', e);
-  }
-};
-
-function badgeHTML(estado) {
-  const map = {
-    [ESTADOS.BORRADOR]:        ['badge-pending',  'Borrador'],
-    [ESTADOS.PENDIENTE_JEFE1]: ['badge-partial',  'Pte. Jefe 1'],
-    [ESTADOS.PENDIENTE_JEFE2]: ['badge-partial',  'Pte. Jefe 2'],
-    [ESTADOS.APROBADA]:        ['badge-approved', 'Aprobada'],
-    [ESTADOS.RECHAZADA]:       ['badge-rejected', 'Rechazada'],
-  };
-  const [cls, label] = map[estado] || ['badge-pending', estado];
-  return `<span class="badge ${cls}">${label}</span>`;
-}
-
-function formatearFechaCorta(iso) {
-  if (!iso) return '—';
-  const [y, m, d] = iso.split('-');
-  return `${d}/${m}/${y}`;
-}
 
