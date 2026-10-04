@@ -508,19 +508,30 @@ window.descargarLocalPDF = function() {
   var bytes = state.pdfFirmadoBytes || state.pdfBytes;
   if (!bytes) return;
 
-  if (window._pdfPreviewUrl) URL.revokeObjectURL(window._pdfPreviewUrl);
-  var blob = new Blob([bytes], { type: 'application/pdf' });
-  window._pdfPreviewUrl = URL.createObjectURL(blob);
+  try {
+    if (window._pdfPreviewUrl) {
+      URL.revokeObjectURL(window._pdfPreviewUrl);
+      window._pdfPreviewUrl = null;
+    }
+    var blob = new Blob([bytes], { type: 'application/pdf' });
+    var url = URL.createObjectURL(blob);
+    window._pdfPreviewUrl = url;
 
-  var a = document.createElement('a');
-  a.href = window._pdfPreviewUrl;
-  a.download = 'solicitud-vacaciones.pdf';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(function() {
-    document.body.removeChild(a);
-  }, 100);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'solicitud-vacaciones.pdf';
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener');
+    // No añadir al DOM para evitar interferencias con eventos del formulario
+    // Usar dispatchEvent para evitar bubbling
+    var clickEvt = new MouseEvent('click', { bubbles: false, cancelable: true, view: window });
+    a.dispatchEvent(clickEvt);
+
+    // Liberar la URL tras la descarga
+    setTimeout(function() { URL.revokeObjectURL(url); window._pdfPreviewUrl = null; }, 10000);
+  } catch (e) {
+    console.error('Error al descargar PDF:', e);
+  }
 };
 
 function badgeHTML(estado) {
@@ -541,14 +552,3 @@ function formatearFechaCorta(iso) {
   return `${d}/${m}/${y}`;
 }
 
-function truncar(str, n) {
-  return str && str.length > n ? str.slice(0, n) + '…' : (str || '—');
-}
-
-function toast(msg, tipo = 'info') {
-  const el = document.createElement('div');
-  el.className = `toast ${tipo}`;
-  el.innerHTML = `<span>${tipo === 'success' ? '✓' : tipo === 'error' ? '✕' : 'ℹ'}</span><span>${msg}</span>`;
-  $('toastContainer').appendChild(el);
-  setTimeout(() => el.remove(), 4500);
-}
