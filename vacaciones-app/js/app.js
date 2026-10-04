@@ -552,3 +552,49 @@ window.descargarLocalPDF = function() {
     var url = URL.createObjectURL(blob);
     window._pdfPreviewUrl = url;
 
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'solicitud-vacaciones.pdf';
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener');
+    // No añadir al DOM para evitar interferencias con eventos del formulario
+    // Usar dispatchEvent para evitar bubbling
+    var clickEvt = new MouseEvent('click', { bubbles: false, cancelable: true, view: window });
+    a.dispatchEvent(clickEvt);
+
+    // Liberar la URL tras la descarga
+    setTimeout(function() { URL.revokeObjectURL(url); window._pdfPreviewUrl = null; }, 10000);
+  } catch (e) {
+    console.error('Error al descargar PDF:', e);
+  }
+};
+
+function badgeHTML(estado) {
+  const map = {
+    [ESTADOS.BORRADOR]:        ['badge-pending',  'Borrador'],
+    [ESTADOS.PENDIENTE_JEFE1]: ['badge-partial',  'Pte. Jefe 1'],
+    [ESTADOS.PENDIENTE_JEFE2]: ['badge-partial',  'Pte. Jefe 2'],
+    [ESTADOS.APROBADA]:        ['badge-approved', 'Aprobada'],
+    [ESTADOS.RECHAZADA]:       ['badge-rejected', 'Rechazada'],
+  };
+  const [cls, label] = map[estado] || ['badge-pending', estado];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function formatearFechaCorta(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function truncar(str, n) {
+  return str && str.length > n ? str.slice(0, n) + '…' : (str || '—');
+}
+
+function toast(msg, tipo = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${tipo}`;
+  el.innerHTML = `<span>${tipo === 'success' ? '✓' : tipo === 'error' ? '✕' : 'ℹ'}</span><span>${msg}</span>`;
+  $('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
