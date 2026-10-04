@@ -125,9 +125,9 @@ function buildExtraParams(rol, solicitudId) {
     'signatureContactInfo=VacaFirma - ' + solicitudId,
     'signaturePage=last',
     'signaturePositionOnPageLowerLeftX=' + posX,
-    'signaturePositionOnPageLowerLeftY=100',
+    'signaturePositionOnPageLowerLeftY=220',
     'signaturePositionOnPageUpperRightX=' + (posX + 155),
-    'signaturePositionOnPageUpperRightY=160'
+    'signaturePositionOnPageUpperRightY=290'
   ].join('\n');
 }
 
