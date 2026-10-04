@@ -92,7 +92,21 @@ async function handleLoginPassword() {
   if (btn) { btn.disabled = true; btn.textContent = 'Entrando…'; }
 
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    // Intentar usar wrapper de supabase-client.js si existe; si no, usar el cliente global
+    let error;
+    if (typeof loginConContrasena === 'function') {
+      const result = await loginConContrasena(email, password);
+      error = result && result.error ? result.error : null;
+    } else {
+      // Obtener el cliente Supabase: puede llamarse 'supabase', '_supabase' o 'supabaseClient'
+      const client = (typeof supabase !== 'undefined' && supabase) ||
+                     (typeof _supabase !== 'undefined' && _supabase) ||
+                     (typeof supabaseClient !== 'undefined' && supabaseClient) ||
+                     (typeof getSupabaseClient === 'function' && getSupabaseClient());
+      if (!client) throw new Error('Cliente Supabase no inicializado');
+      const result = await client.auth.signInWithPassword({ email, password });
+      error = result.error;
+    }
     if (error) throw error;
     // onAuthStateChange se encargará del resto
   } catch (err) {
@@ -422,8 +436,12 @@ async function notificarJefe1(solicitud, nombreEmpleado, datos) {
       jefes = await getUsuariosPorRol('jefe_1');
     } else {
       // Fallback: consultar user_profiles directamente
-      // Si la tabla tiene columna 'email', úsala; si no, el admin debe añadirla
-      const { data, error } = await supabase
+      const _client = (typeof supabase !== 'undefined' && supabase) ||
+                      (typeof _supabase !== 'undefined' && _supabase) ||
+                      (typeof supabaseClient !== 'undefined' && supabaseClient) ||
+                      (typeof getSupabaseClient === 'function' && getSupabaseClient());
+      if (!_client) { console.warn('[VacaFirma] Cliente Supabase no disponible'); return; }
+      const { data, error } = await _client
         .from('user_profiles')
         .select('id, nombre_completo, email, rol')
         .eq('rol', 'jefe_1');
