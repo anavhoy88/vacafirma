@@ -120,13 +120,14 @@ function intentarAbrirAutofirma() {
 function buildExtraParams(rol, solicitudId) {
   // Coordenadas medidas directamente del PDF generado (puntos PDF, origen abajo-izq)
   // Cuadros de firma: Empleado x=58-207, Jefe1 x=223-372, Jefe2 x=388-537, Y=322-382
-  // Coordenadas medidas del PDF (origen abajo-izquierda).
-  // AutoFirma aplica un offset de ~102 pts (alto del encabezado) por lo que
-  // se suman 102 a lly/ury para que la firma caiga en el cuadro correcto.
+  // Coordenadas donde AutoFirma realmente coloca la firma (origen abajo-izquierda).
+  // Medido empíricamente: AutoFirma ignora signaturePositionOnPage* en ciertos casos
+  // y coloca la firma siempre en lly≈220. Los cuadros del PDF se han ajustado
+  // para coincidir con esa posición.
   var coords = {
-    'empleado': { llx: 58,  lly: 424, urx: 207, ury: 484 },
-    'jefe_1':   { llx: 223, lly: 424, urx: 372, ury: 484 },
-    'jefe_2':   { llx: 388, lly: 424, urx: 537, ury: 484 }
+    'empleado': { llx: 50,  lly: 218, urx: 214, ury: 294 },
+    'jefe_1':   { llx: 222, lly: 218, urx: 386, ury: 294 },
+    'jefe_2':   { llx: 394, lly: 218, urx: 545, ury: 294 }
   };
   var c = coords[rol] || coords['empleado'];
   return [
