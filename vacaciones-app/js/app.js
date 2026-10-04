@@ -376,13 +376,71 @@ async function handleEnviarSolicitud() {
     });
     console.log('[VacaFirma] Registro actualizado:', updated);
 
-    toast('¡Solicitud enviada correctamente! Los jefes recibirán notificación.', 'success');
+    toast('¡Solicitud enviada y guardada correctamente!', 'success');
+
+    // 4. Notificar al primer jefe por correo
+    await notificarJefe1(solicitud, nombre, datos);
+
     mostrarDashboard();
 
   } catch (err) {
     toast('Error al enviar: ' + err.message, 'error');
     btn.disabled = false;
     btn.textContent = 'Enviar solicitud firmada';
+  }
+}
+
+// ── NOTIFICACIÓN JEFES ───────────────────────────────────────
+
+async function notificarJefe1(solicitud, nombreEmpleado, datos) {
+  try {
+    // Obtener emails de jefes con rol jefe_1 desde user_profiles + auth.users
+    // getUsuariosPorRol viene de supabase-client.js; si no existe, usar supabase directo
+    // Obtener perfiles de jefes con rol jefe_1
+    let jefes;
+    if (typeof getUsuariosPorRol === 'function') {
+      jefes = await getUsuariosPorRol('jefe_1');
+    } else {
+      // Fallback: consultar user_profiles directamente
+      // Si la tabla tiene columna 'email', úsala; si no, el admin debe añadirla
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, nombre_completo, email, rol')
+        .eq('rol', 'jefe_1');
+      if (error) throw error;
+      jefes = data || [];
+    }
+    if (!jefes || jefes.length === 0) {
+      console.warn('[VacaFirma] No se encontraron jefes con rol jefe_1');
+      return;
+    }
+
+    const emailsJefes = jefes.map(j => j.email).filter(Boolean);
+    if (emailsJefes.length === 0) {
+      console.warn('[VacaFirma] Los jefes no tienen email registrado');
+      return;
+    }
+
+    const asunto = encodeURIComponent(
+      `[VacaFirma] Nueva solicitud de vacaciones — ${nombreEmpleado}`
+    );
+    const cuerpo = encodeURIComponent(
+      `Hola,\n\n` +
+      `${nombreEmpleado} ha enviado una solicitud de vacaciones que requiere tu firma.\n\n` +
+      `  Periodo: ${datos.fechaInicio} → ${datos.fechaFin}\n` +
+      `  Destino: ${datos.direccion || '—'}\n` +
+      (datos.observaciones ? `  Observaciones: ${datos.observaciones}\n\n` : '\n') +
+      `Accede a VacaFirma para revisarla y firmarla:\n` +
+      `${window.location.origin}\n\n` +
+      `Referencia: ${solicitud.id}\n`
+    );
+
+    const mailto = `mailto:${emailsJefes.join(',')}?subject=${asunto}&body=${cuerpo}`;
+    window.open(mailto, '_blank');
+
+  } catch (err) {
+    // No bloquear el flujo si falla la notificación
+    console.warn('[VacaFirma] Error al notificar jefe:', err.message);
   }
 }
 
@@ -443,17 +501,15 @@ async function handleFirmarJefe() {
   }
 }
 
-// ── DESCARGA ──────────────────────────────────────────────────
+// ── DESCARGA / VER PDF ───────────────────────────────────────
 
 async function handleDescargarPDF(solicitud) {
   try {
     const url = await getURLFirmada(solicitud.pdf_path);
-    const a   = document.createElement('a');
-    a.href     = url;
-    a.download = `vacaciones-${solicitud.empleado_nombre}-${solicitud.fecha_inicio}.pdf`;
-    a.click();
+    // Abrir en nueva pestaña para que el navegador/OS use el visor instalado
+    window.open(url, '_blank', 'noopener,noreferrer');
   } catch (err) {
-    toast('Error al descargar: ' + err.message, 'error');
+    toast('Error al abrir PDF: ' + err.message, 'error');
   }
 }
 
@@ -530,7 +586,7 @@ async function mostrarPreviewCanvas(pdfBytes) {
     const btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;justify-content:center;padding:8px 0 4px;';
     const btn = document.createElement('button');
-    btn.textContent = '⬇ Descargar PDF';
+    btn.textContent = '↗ Abrir PDF en nueva pestaña';
     btn.style.cssText = 'padding:0.35rem 1rem;background:var(--navy);color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;';
     btn.onclick = descargarLocalPDF;
     btnRow.appendChild(btn);
@@ -544,7 +600,7 @@ async function mostrarPreviewCanvas(pdfBytes) {
   }
 }
 
-// Descarga el PDF directamente sin navegar ni cerrar la app
+// Abre el PDF en nueva pestaña (el navegador/OS usa el visor instalado)
 window.descargarLocalPDF = function() {
   var bytes = state.pdfFirmadoBytes || state.pdfBytes;
   if (!bytes) return;
@@ -558,20 +614,13 @@ window.descargarLocalPDF = function() {
     var url = URL.createObjectURL(blob);
     window._pdfPreviewUrl = url;
 
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'solicitud-vacaciones.pdf';
-    a.setAttribute('target', '_blank');
-    a.setAttribute('rel', 'noopener');
-    // No añadir al DOM para evitar interferencias con eventos del formulario
-    // Usar dispatchEvent para evitar bubbling
-    var clickEvt = new MouseEvent('click', { bubbles: false, cancelable: true, view: window });
-    a.dispatchEvent(clickEvt);
+    // Abrir en nueva pestaña — el visor de PDF del sistema lo gestiona
+    window.open(url, '_blank', 'noopener,noreferrer');
 
-    // Liberar la URL tras la descarga
-    setTimeout(function() { URL.revokeObjectURL(url); window._pdfPreviewUrl = null; }, 10000);
+    // Liberar la URL tras dar tiempo a que cargue
+    setTimeout(function() { URL.revokeObjectURL(url); window._pdfPreviewUrl = null; }, 30000);
   } catch (e) {
-    console.error('Error al descargar PDF:', e);
+    console.error('Error al abrir PDF:', e);
   }
 };
 
