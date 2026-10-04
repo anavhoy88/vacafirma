@@ -503,7 +503,7 @@ async function mostrarPreviewCanvas(pdfBytes) {
   `;
 }
 
-// Abre el PDF en un modal dentro de la propia página (no navega ni cierra la app)
+// Descarga el PDF directamente sin navegar ni cerrar la app
 window.descargarLocalPDF = function() {
   var bytes = state.pdfFirmadoBytes || state.pdfBytes;
   if (!bytes) return;
@@ -512,38 +512,15 @@ window.descargarLocalPDF = function() {
   var blob = new Blob([bytes], { type: 'application/pdf' });
   window._pdfPreviewUrl = URL.createObjectURL(blob);
 
-  var existing = document.getElementById('pdfViewerOverlay');
-  if (existing) existing.remove();
-
-  var overlay = document.createElement('div');
-  overlay.id = 'pdfViewerOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;';
-
-  var closeBtn = document.createElement('button');
-  closeBtn.textContent = '\u2715 Cerrar';
-  closeBtn.style.cssText = 'background:#c9a84c;border:none;color:#0f1a2e;padding:0.4rem 1rem;border-radius:6px;cursor:pointer;font-weight:600;font-family:sans-serif;';
-  closeBtn.onclick = function() { document.getElementById('pdfViewerOverlay').remove(); };
-
-  var label = document.createElement('span');
-  label.textContent = 'Vista previa del PDF';
-  label.style.cssText = 'color:white;font-size:0.9rem;font-family:sans-serif;';
-
-  var topBar = document.createElement('div');
-  topBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
-  topBar.appendChild(label);
-  topBar.appendChild(closeBtn);
-
-  var iframe = document.createElement('iframe');
-  iframe.src = window._pdfPreviewUrl;
-  iframe.style.cssText = 'flex:1;border:none;border-radius:8px;';
-
-  var inner = document.createElement('div');
-  inner.style.cssText = 'width:90%;max-width:900px;height:85vh;display:flex;flex-direction:column;gap:0.75rem;';
-  inner.appendChild(topBar);
-  inner.appendChild(iframe);
-
-  overlay.appendChild(inner);
-  document.body.appendChild(overlay);
+  var a = document.createElement('a');
+  a.href = window._pdfPreviewUrl;
+  a.download = 'solicitud-vacaciones.pdf';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() {
+    document.body.removeChild(a);
+  }, 100);
 };
 
 function badgeHTML(estado) {
