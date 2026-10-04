@@ -50,11 +50,13 @@ function initAuth() {
 function bindEvents() {
   // Auth
   $('btnSendMagicLink').addEventListener('click', handleMagicLink);
+  $('btnLoginPassword') && $('btnLoginPassword').addEventListener('click', handleLoginPassword);
   $('btnLogin').addEventListener('click', () => {
     if (state.session) handleLogout();
     else mostrarLogin();
   });
   $('loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') handleMagicLink(); });
+  $('loginPassword') && $('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') handleLoginPassword(); });
 
   // Dashboard
   $('btnNuevaSolicitud').addEventListener('click', () => mostrarFormulario());
@@ -80,6 +82,24 @@ function bindEvents() {
 }
 
 // ── AUTH HANDLERS ─────────────────────────────────────────────
+
+async function handleLoginPassword() {
+  const email    = $('loginEmail').value.trim();
+  const password = $('loginPassword') ? $('loginPassword').value : '';
+  if (!email || !password) { toast('Introduce correo y contraseña.', 'error'); return; }
+
+  const btn = $('btnLoginPassword');
+  if (btn) { btn.disabled = true; btn.textContent = 'Entrando…'; }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    // onAuthStateChange se encargará del resto
+  } catch (err) {
+    toast('Error al iniciar sesión: ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Entrar con contraseña'; }
+  }
+}
 
 async function handleMagicLink() {
   const email = $('loginEmail').value.trim();
