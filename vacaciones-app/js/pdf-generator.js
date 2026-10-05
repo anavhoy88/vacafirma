@@ -3,59 +3,30 @@
 // Genera el PDF de solicitud de permiso fiel al modelo oficial
 // del Ejército del Aire y del Espacio.
 // Requiere pdf-lib cargado antes en la página.
+// NOTA: TIPO_LABELS y ESTADO_LABELS se definen en app.js (scope global)
 // ═══════════════════════════════════════════════════════════════
-
-// ── ETIQUETAS DE TIPO DE PERMISO ─────────────────────────────
-const TIPO_LABELS = {
-  vacaciones:              'Vacaciones',
-  asuntos_particulares:    'Asuntos Particulares',
-  dias_adicionales:        'Días Adicionales',
-  permiso_extraordinario:  'Permiso Extraordinario',
-};
-
-// ── ETIQUETAS DE ESTADO ───────────────────────────────────────
-const ESTADO_LABELS = {
-  borrador:               'Borrador',
-  firmada_empleado:       'Firmado por interesado',
-  aprobada_jefe_seccion:  'Aprobado por Jefe de Sección',
-  rechazada_jefe_seccion: 'Rechazado por Jefe de Sección',
-  aprobada:               'APROBADO',
-  rechazada:              'RECHAZADO',
-};
 
 // ── COLORES ───────────────────────────────────────────────────
 const COL = {
   negro:     [0,   0,   0  ],
   gris:      [0.4, 0.4, 0.4],
   grisCelda: [0.95,0.95,0.95],
-  grisCab:   [0.15,0.25,0.45],   // azul oscuro para cabeceras
+  grisCab:   [0.15,0.25,0.45],
   blanco:    [1,   1,   1  ],
   verde:     [0.1, 0.5, 0.2],
   rojo:      [0.7, 0.1, 0.1],
   amarillo:  [0.6, 0.4, 0.0],
 };
 
-// ── FUNCIÓN PRINCIPAL ─────────────────────────────────────────
-
-/**
- * Genera el PDF de solicitud de permiso.
- *
- * @param {Object} permiso  - Fila de la tabla permisos (con .empleado y .firmas)
- * @param {Array}  firmas   - Array de firmas registradas (puede estar vacío)
- * @returns {Uint8Array}    - Bytes del PDF generado
- */
 async function generarPDFPermiso(permiso, firmas = []) {
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
   const doc  = await PDFDocument.create();
-  const page = doc.addPage([595.28, 841.89]); // A4
+  const page = doc.addPage([595.28, 841.89]);
   const { width, height } = page.getSize();
 
-  // Fuentes
   const fontReg  = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-
-  // ── Helpers de dibujo ────────────────────────────────────────
 
   function rgb3(arr) { return rgb(arr[0], arr[1], arr[2]); }
 
@@ -69,7 +40,6 @@ async function generarPDFPermiso(permiso, firmas = []) {
     const s = String(text);
     let display = s;
     if (maxWidth && font.widthOfTextAtSize(s, size) > maxWidth) {
-      // Truncar con ellipsis
       let t = s;
       while (t.length > 1 && font.widthOfTextAtSize(t + '…', size) > maxWidth) {
         t = t.slice(0, -1);
@@ -87,11 +57,8 @@ async function generarPDFPermiso(permiso, firmas = []) {
     page.drawLine({ start: { x, y: y1 }, end: { x, y: y2 }, thickness: 0.5, color: rgb3(COL.gris) });
   }
 
-  // ── 1. CABECERA INSTITUCIONAL ─────────────────────────────
-
   const TOP = height - 20;
 
-  // Bloque organismo (derecha)
   rect(380, TOP - 50, 195, 50, COL.grisCab, null);
   txt('EJÉRCITO DEL AIRE Y DEL ESPACIO',    386, TOP - 12, { size: 7, font: fontBold, color: COL.blanco });
   txt('BASE AÉREA DE ALBACETE Y ALA 14',    386, TOP - 22, { size: 7, color: COL.blanco });
@@ -99,43 +66,36 @@ async function generarPDFPermiso(permiso, firmas = []) {
   txt('IG 10-99',                           386, TOP - 42, { size: 7, color: COL.blanco });
   txt('7ª Rev. 20/10/2022',                 386, TOP - 52, { size: 6, color: COL.blanco });
 
-  // Título central
   txt('FICHA DE SOLICITUD DE PERMISOS AÑO ' + (permiso.anio || new Date().getFullYear()),
       120, TOP - 18, { size: 11, font: fontBold });
 
-  // Datos del interesado
   const emp = permiso.empleado || {};
   rect(20, TOP - 85, 555, 32, null, COL.gris);
   txt('EMPLEO:',          25, TOP - 60, { size: 8, font: fontBold });
   txt(emp.empleo || '',   80, TOP - 60, { size: 8 });
   txt('DNI:',            260, TOP - 60, { size: 8, font: fontBold });
   txt(emp.dni || '',     285, TOP - 60, { size: 8 });
-
   txt('NOMBRE Y APELLIDOS:', 25, TOP - 75, { size: 8, font: fontBold });
   txt(emp.nombre_completo || '', 130, TOP - 75, { size: 8 });
   txt('DEPENDENCIA:', 260, TOP - 75, { size: 8, font: fontBold });
   txt(emp.dependencia || '', 335, TOP - 75, { size: 8 });
 
-  // ── 2. TABLA DE DATOS DEL PERMISO ────────────────────────
-
-  const T_TOP  = TOP - 100;   // y superior de la tabla
+  const T_TOP  = TOP - 100;
   const T_LEFT = 20;
   const T_W    = 555;
 
-  // Columnas (x inicio de cada una)
   const cols = {
-    inicio:    T_LEFT,          // Fecha inicio
-    fin:       T_LEFT + 60,     // Fecha fin
-    tipo:      T_LEFT + 120,    // Tipo de permiso
-    dias:      T_LEFT + 250,    // Días hábiles
-    dir:       T_LEFT + 290,    // Dirección / Teléfono
-    motivo:    T_LEFT + 430,    // Motivo/Leyenda
+    inicio:    T_LEFT,
+    fin:       T_LEFT + 60,
+    tipo:      T_LEFT + 120,
+    dias:      T_LEFT + 250,
+    dir:       T_LEFT + 290,
+    motivo:    T_LEFT + 430,
     end:       T_LEFT + T_W,
   };
 
   const ROW_H = 16;
 
-  // Cabecera de la tabla
   rect(T_LEFT, T_TOP - ROW_H, T_W, ROW_H, COL.grisCab, null);
   const cabY = T_TOP - ROW_H + 5;
   txt('FECHA INICIO',  cols.inicio  + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
@@ -145,12 +105,10 @@ async function generarPDFPermiso(permiso, firmas = []) {
   txt('DIRECCIÓN / TELÉFONO', cols.dir + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
   txt('MOTIVO',        cols.motivo  + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
 
-  // Separadores de columna en cabecera
   [cols.fin, cols.tipo, cols.dias, cols.dir, cols.motivo, cols.end].forEach(x => {
     linev(x, T_TOP - ROW_H, T_TOP);
   });
 
-  // Fila de datos
   const ROW_Y = T_TOP - ROW_H * 2;
   rect(T_LEFT, ROW_Y, T_W, ROW_H, COL.grisCelda, null);
   const dataY = ROW_Y + 5;
@@ -167,16 +125,14 @@ async function generarPDFPermiso(permiso, firmas = []) {
                                       cols.dir     + 3, dataY, { size: 7, maxWidth: 135 });
   txt(permiso.motivo || '',           cols.motivo  + 3, dataY, { size: 7, maxWidth: 140 });
 
-  // Borde completo de la tabla
   lineh(T_LEFT, T_TOP, cols.end);
   lineh(T_LEFT, T_TOP - ROW_H, cols.end);
   lineh(T_LEFT, ROW_Y, cols.end);
-  lineh(T_LEFT, ROW_Y - ROW_H, cols.end);  // fondo fila datos
+  lineh(T_LEFT, ROW_Y - ROW_H, cols.end);
   [cols.inicio, cols.fin, cols.tipo, cols.dias, cols.dir, cols.motivo, cols.end].forEach(x => {
-    linev(x, T_TOP, ROW_Y - ROW_H + ROW_H); // ≈ T_TOP a ROW_Y
+    linev(x, T_TOP, ROW_Y - ROW_H + ROW_H);
     linev(x, ROW_Y, ROW_Y - ROW_H);
   });
-  // Borde exterior
   page.drawRectangle({
     x: T_LEFT, y: ROW_Y - ROW_H, width: T_W,
     height: ROW_H * 2 + ROW_H,
@@ -184,7 +140,6 @@ async function generarPDFPermiso(permiso, firmas = []) {
     color: rgb(1,1,1,0)
   });
 
-  // Observaciones (si hay)
   let curY = ROW_Y - ROW_H - 10;
   if (permiso.observaciones) {
     txt('Observaciones:', T_LEFT, curY, { size: 8, font: fontBold });
@@ -192,7 +147,6 @@ async function generarPDFPermiso(permiso, firmas = []) {
     curY -= 18;
   }
 
-  // Estado de la solicitud
   const estadoColor = permiso.estado === 'aprobada'  ? COL.verde
                     : permiso.estado.startsWith('rechazada') ? COL.rojo
                     : COL.amarillo;
@@ -208,19 +162,15 @@ async function generarPDFPermiso(permiso, firmas = []) {
         T_LEFT + 5, curY, { size: 8, color: COL.rojo, maxWidth: 540 });
   }
 
-  // ── 3. SECCIÓN DE FIRMAS ──────────────────────────────────
-
   curY -= 35;
   const F_TOP = curY;
 
-  // Título sección firmas
   rect(T_LEFT, F_TOP, T_W, 16, COL.grisCab, null);
   txt('REGISTRO DE FIRMAS ELECTRÓNICAS', T_LEFT + 5, F_TOP + 5,
       { size: 8, font: fontBold, color: COL.blanco });
 
   curY = F_TOP - 16;
 
-  // Cabecera columnas firmas
   const FC = {
     rol:    T_LEFT,
     nombre: T_LEFT + 90,
@@ -246,7 +196,6 @@ async function generarPDFPermiso(permiso, firmas = []) {
 
   curY -= 14;
 
-  // Filas de firmas existentes
   const rolesOrden = ['empleado', 'jefe_seccion', 'jefe_grupo'];
   const rolLabels  = {
     empleado:    'Interesado',
@@ -280,7 +229,6 @@ async function generarPDFPermiso(permiso, firmas = []) {
       const accionTxt   = firma.accion === 'aprobado' ? '✓ APROBADO' : '✗ RECHAZADO';
       txt(accionTxt, FC.accion + 3, fY, { size: 8, font: fontBold, color: accionColor });
 
-      // Ref. certificado (segunda línea)
       if (firma.cert_hash) {
         txt('Cert: ' + firma.cert_hash.substring(0, 24) + '…',
             FC.nombre + 3, fY - 10, { size: 6, color: COL.gris });
@@ -289,7 +237,6 @@ async function generarPDFPermiso(permiso, firmas = []) {
       txt('Pendiente de firma', FC.nombre + 3, fY, { size: 8, color: COL.gris });
     }
 
-    // Líneas de la fila
     [FC.nombre, FC.dni, FC.fecha, FC.accion, FC.end].forEach(x => {
       linev(x, curY, curY - FH);
     });
@@ -300,7 +247,6 @@ async function generarPDFPermiso(permiso, firmas = []) {
     curY -= FH;
   });
 
-  // Borde exterior tabla firmas
   page.drawRectangle({
     x: T_LEFT, y: curY, width: T_W,
     height: F_TOP - curY,
@@ -308,32 +254,12 @@ async function generarPDFPermiso(permiso, firmas = []) {
     color: rgb(1,1,1,0)
   });
 
-  // ── 4. PIE DE PÁGINA ─────────────────────────────────────
-
   const pieY = 25;
   lineh(T_LEFT, pieY + 14, T_LEFT + T_W);
   txt('Documento generado electrónicamente por VacaFirma · ' + formatFechaHora(new Date().toISOString()),
       T_LEFT, pieY + 4, { size: 6, color: COL.gris });
   txt('ID: ' + (permiso.id || ''), T_LEFT + T_W - 220, pieY + 4, { size: 6, color: COL.gris });
 
-  // ── SERIALIZAR ───────────────────────────────────────────
   const pdfBytes = await doc.save();
   return new Uint8Array(pdfBytes);
-}
-
-// ── HELPERS DE FECHA ─────────────────────────────────────────
-
-function formatFecha(isoStr) {
-  if (!isoStr) return '';
-  const d = new Date(isoStr + 'T00:00:00');
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function formatFechaHora(isoStr) {
-  if (!isoStr) return '';
-  const d = new Date(isoStr);
-  return d.toLocaleString('es-ES', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
 }
