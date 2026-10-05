@@ -9,7 +9,6 @@ const _supabase = window.supabase.createClient(
   window.SUPABASE_ANON_KEY
 );
 
-// Exponer para módulos que necesiten el cliente directamente
 function getSupabaseClient() { return _supabase; }
 
 // ══════════════════════════════════════════════════════════════
@@ -36,11 +35,11 @@ async function logout() {
 }
 
 function onAuthStateChange(callback) {
+  // onAuthStateChange de Supabase JS v2 procesa automáticamente el token
+  // del hash (#access_token=...) cuando el usuario llega desde el magic link.
+  // NO llamar a getSession() manualmente aquí: llegaría antes de que el SDK
+  // procese el hash y devolvería null, mostrando el login en lugar del dashboard.
   _supabase.auth.onAuthStateChange((_event, session) => {
-    callback(session);
-  });
-  // Comprobar sesión inicial
-  _supabase.auth.getSession().then(({ data: { session } }) => {
     callback(session);
   });
 }
@@ -95,7 +94,6 @@ async function buscarUsuarioPorEmail(email) {
 // ══════════════════════════════════════════════════════════════
 
 async function crearPermiso(datos) {
-  // Intentar resolver el jefe de sección si su email está en el sistema
   let jefe_seccion_id = null;
   if (datos.jefe_seccion_email) {
     const jefe = await buscarUsuarioPorEmail(datos.jefe_seccion_email);
@@ -176,7 +174,6 @@ async function getPermisoById(id) {
   return data;
 }
 
-// Actualizar estado y PDF tras firma del empleado
 async function actualizarTrasFirmaEmpleado(permisoId, pdfUrl) {
   const { data, error } = await _supabase
     .from('permisos')
@@ -189,7 +186,6 @@ async function actualizarTrasFirmaEmpleado(permisoId, pdfUrl) {
   return data;
 }
 
-// Jefe sección aprueba
 async function aprobarJefeSeccion(permisoId, pdfUrl) {
   const { data, error } = await _supabase
     .from('permisos')
@@ -202,7 +198,6 @@ async function aprobarJefeSeccion(permisoId, pdfUrl) {
   return data;
 }
 
-// Jefe sección rechaza
 async function rechazarJefeSeccion(permisoId, motivo) {
   const { data, error } = await _supabase
     .from('permisos')
@@ -219,7 +214,6 @@ async function rechazarJefeSeccion(permisoId, motivo) {
   return data;
 }
 
-// Jefe grupo aprueba
 async function aprobarJefeGrupo(permisoId, pdfFinalUrl) {
   const { data, error } = await _supabase
     .from('permisos')
@@ -232,7 +226,6 @@ async function aprobarJefeGrupo(permisoId, pdfFinalUrl) {
   return data;
 }
 
-// Jefe grupo rechaza
 async function rechazarJefeGrupo(permisoId, motivo) {
   const { data, error } = await _supabase
     .from('permisos')
@@ -303,7 +296,7 @@ async function subirPDF(userId, permisoId, pdfBytes, sufijo = '') {
 async function getUrlPDF(path) {
   const { data, error } = await _supabase.storage
     .from('permisos')
-    .createSignedUrl(path, 60 * 60); // 1 hora de validez
+    .createSignedUrl(path, 60 * 60);
   if (error) throw error;
   return data.signedUrl;
 }
