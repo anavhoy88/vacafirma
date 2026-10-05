@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VacaFirma · Base Aérea de Albacete</title>
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <!-- pdf-lib -->
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+  <!-- AutoFirma (autoscript.js v1.6.5 — debe estar descargado en la misma carpeta) -->
+  <script src="autoscript.js"></script>
+
+  <!-- Configuración (EDITAR antes de desplegar) -->
+  <script>
+    window.SUPABASE_URL      = 'https://TU_PROYECTO.supabase.co';
+    window.SUPABASE_ANON_KEY = 'TU_ANON_KEY';
+  </script>
+
+  <!-- Módulos de la app -->
+  <script src="supabase-client.js"></script>
+  <script src="pdf-generator.js"></script>
+  <script src="autofirma.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --azul:       #1a3a6c;
+      --azul-claro: #2a5298;
+      --azul-bg:    #eaf0fb;
+      --verde:      #1a7a4a;
+      --verde-bg:   #e8f7ef;
+      --rojo:       #b91c1c;
+      --rojo-bg:    #fef2f2;
+      --ambar:      #b45309;
+      --ambar-bg:   #fffbeb;
+      --gris:       #6b7280;
+      --gris-bg:    #f9fafb;
+      --borde:      #d1d5db;
+      --texto:      #111827;
+      --texto-2:    #4b5563;
+      --blanco:     #ffffff;
+      --sombra:     0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08);
+      --sombra-md:  0 4px 6px rgba(0,0,0,.10), 0 2px 4px rgba(0,0,0,.06);
+      --radio:      8px;
+      --radio-sm:   4px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--gris-bg);
+      color: var(--texto);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    h1, h2, h3 { font-weight: 600; }
+    .hidden { display: none !important; }
+
+    /* HEADER */
+    .site-header {
+      background: var(--azul);
+      color: var(--blanco);
+      padding: 0 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      box-shadow: var(--sombra-md);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-brand { display: flex; align-items: center; gap: .75rem; }
+    .header-logo {
+      width: 36px; height: 36px;
+      background: rgba(255,255,255,.15);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem;
+    }
+    .header-title  { font-size: 1.1rem; font-weight: 700; letter-spacing: .02em; }
+    .header-sub    { font-size: .7rem; opacity: .8; font-weight: 400; }
+    .header-auth   { display: flex; align-items: center; gap: .75rem; font-size: .85rem; }
+    #authStatus    { opacity: .85; }
+    #userRoleBadge {
+      background: rgba(255,255,255,.18);
+      padding: .2rem .6rem;
+      border-radius: 20px;
+      font-size: .75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    #btnLogin {
+      background: rgba(255,255,255,.2);
+      border: 1px solid rgba(255,255,255,.3);
+      color: var(--blanco);
+      padding: .35rem .9rem;
+      border-radius: var(--radio-sm);
+      cursor: pointer;
+      font-size: .85rem;
+      transition: background .15s;
+    }
+    #btnLogin:hover { background: rgba(255,255,255,.3); }
+
+    /* MAIN */
+    .main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    .panel {
+      background: var(--blanco);
+      border-radius: var(--radio);
+      box-shadow: var(--sombra);
+      padding: 2rem;
+    }
+    .panel-title {
+      font-size: 1.1rem;
+      color: var(--azul);
+      margin-bottom: 1.5rem;
+      padding-bottom: .75rem;
+      border-bottom: 2px solid var(--azul-bg);
+    }
+
+    /* BOTONES */
+    .btn {
+      display: inline-flex; align-items: center; gap: .4rem;
+      padding: .55rem 1.2rem;
+      border-radius: var(--radio-sm); border: none;
+      cursor: pointer; font-size: .9rem; font-weight: 500;
+      transition: opacity .15s, background .15s;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary  { background: var(--azul-claro); color: var(--blanco); }
+    .btn-primary:hover:not(:disabled)  { background: var(--azul); }
+    .btn-success  { background: var(--verde); color: var(--blanco); }
+    .btn-success:hover:not(:disabled)  { opacity: .88; }
+    .btn-danger   { background: var(--rojo); color: var(--blanco); }
+    .btn-danger:hover:not(:disabled)   { opacity: .88; }
+    .btn-ghost    { background: transparent; border: 1px solid var(--borde); color: var(--texto-2); }
+    .btn-ghost:hover:not(:disabled)    { background: var(--gris-bg); }
+    .btn-sm {
+      padding: .3rem .7rem; font-size: .8rem;
+      border-radius: var(--radio-sm); border: none;
+      cursor: pointer; background: var(--azul-claro);
+      color: var(--blanco); font-weight: 500;
+    }
+    .btn-sm:hover { background: var(--azul); }
+    .btn-sm-outline {
+      background: transparent; border: 1px solid var(--azul-claro);
+      color: var(--azul-claro);
+    }
+    .btn-sm-outline:hover { background: var(--azul-bg); }
+    .btn-row { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1.5rem; }
+
+    /* FORMULARIOS */
+    .form-group { margin-bottom: 1.1rem; }
+    .form-group label {
+      display: block; font-size: .85rem; font-weight: 500;
+      color: var(--texto-2); margin-bottom: .35rem;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: .55rem .8rem;
+      border: 1px solid var(--borde); border-radius: var(--radio-sm);
+      font-size: .9rem; color: var(--texto); background: var(--blanco);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--azul-claro);
+      box-shadow: 0 0 0 3px rgba(42, 82, 152, .15);
+    }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem 1.25rem; }
+    .form-full { grid-column: 1 / -1; }
+
+    /* PANEL LOGIN */
+    #panelLogin { max-width: 420px; margin: 3rem auto; }
+    .login-header { text-align: center; margin-bottom: 2rem; }
+    .login-emblem {
+      width: 72px; height: 72px; background: var(--azul);
+      border-radius: 50%; margin: 0 auto 1rem;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2rem;
+    }
+    .login-header h2 { color: var(--azul); font-size: 1.3rem; }
+    .login-header p  { color: var(--gris); font-size: .85rem; margin-top: .25rem; }
+    #loginMessage    { font-size: .85rem; margin-top: .75rem; min-height: 1.2em; }
+    .login-divider {
+      display: flex; align-items: center; gap: .75rem;
+      margin: 1.25rem 0; color: var(--gris); font-size: .8rem;
+    }
+    .login-divider::before, .login-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--borde);
+    }
+    #togglePasswordLogin {
+      font-size: .8rem; color: var(--azul-claro); cursor: pointer;
+      background: none; border: none; text-decoration: underline;
+      display: block; margin: .5rem auto 0;
+    }
+
+    /* DASHBOARD */
+    .dashboard-top {
+      display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 1.5rem;
+    }
+    .tabla-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    th {
+      background: var(--azul-bg); color: var(--azul);
+      font-weight: 600; padding: .65rem .85rem;
+      text-align: left; white-space: nowrap;
+    }
+    td {
+      padding: .6rem .85rem; border-bottom: 1px solid var(--borde);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--gris-bg); }
+    .empty-row td { text-align: center; color: var(--gris); padding: 2rem; }
+
+    /* BADGES */
+    .badge {
+      display: inline-block; padding: .2rem .65rem;
+      border-radius: 20px; font-size: .75rem;
+      font-weight: 600; white-space: nowrap;
+    }
+    .badge-borrador               { background: #f3f4f6; color: var(--gris); }
+    .badge-firmada_empleado       { background: var(--ambar-bg); color: var(--ambar); }
+    .badge-aprobada_jefe_seccion  { background: #dbeafe; color: #1d4ed8; }
+    .badge-rechazada_jefe_seccion { background: var(--rojo-bg); color: var(--rojo); }
+    .badge-aprobada               { background: var(--verde-bg); color: var(--verde); }
+    .badge-rechazada              { background: var(--rojo-bg); color: var(--rojo); }
+
+    .firma-dot { font-size: 1rem; }
+    .firma-dot.pendiente { color: var(--gris); }
+    .firma-dot.aprobado  { color: var(--verde); }
+    .firma-dot.rechazado { color: var(--rojo); }
+
+    /* FORMULARIO NUEVO PERMISO */
+    .form-section-title {
+      font-size: .8rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--gris); margin: 1.5rem 0 .75rem;
+      padding-bottom: .35rem; border-bottom: 1px solid var(--borde);
+    }
+
+    /* DETALLE */
+    .detalle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem 1.5rem; }
+    .detalle-item { display: flex; flex-direction: column; gap: .2rem; }
+    .detalle-full { grid-column: 1 / -1; }
+    .detalle-label {
+      font-size: .75rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em; color: var(--gris);
+    }
+    .texto-rojo { color: var(--rojo); }
+
+    .firmas-lista { margin-top: 1.5rem; display: flex; flex-direction: column; gap: .75rem; }
+    .firma-row {
+      display: flex; align-items: flex-start; gap: 1rem;
+      padding: .85rem 1rem; border-radius: var(--radio-sm);
+      border: 1px solid var(--borde); background: var(--blanco);
+    }
+    .firma-row.aprobado  { border-color: #86efac; background: var(--verde-bg); }
+    .firma-row.rechazado { border-color: #fca5a5; background: var(--rojo-bg); }
+    .firma-row.pendiente { background: var(--gris-bg); }
+    .firma-dot-lg {
+      font-size: 1.3rem; width: 28px;
+      flex-shrink: 0; text-align: center; margin-top: .1rem;
+    }
+    .firma-row.aprobado  .firma-dot-lg { color: var(--verde); }
+    .firma-row.rechazado .firma-dot-lg { color: var(--rojo); }
+    .firma-row.pendiente .firma-dot-lg { color: var(--gris); }
+    .firma-row div { flex: 1; }
+    .firma-row div strong { display: block; font-size: .9rem; }
+    .firma-row div small  { font-size: .8rem; color: var(--gris); }
+
+    #seccionFirmaJefe {
+      margin-top: 1.5rem; padding-top: 1.25rem;
+      border-top: 2px solid var(--azul-bg);
+    }
+    #seccionFirmaJefe h3 { font-size: .9rem; color: var(--azul); margin-bottom: 1rem; }
+
+    #rechazarWrap {
+      margin-top: 1rem; padding: 1rem;
+      background: var(--rojo-bg);
+      border: 1px solid #fca5a5; border-radius: var(--radio-sm);
+    }
+    #rechazarWrap label {
+      display: block; font-size: .85rem; font-weight: 600;
+      color: var(--rojo); margin-bottom: .5rem;
+    }
+    #motivoRechazo {
+      width: 100%; border: 1px solid #fca5a5;
+      border-radius: var(--radio-sm); padding: .5rem .75rem;
+      font-size: .9rem; resize: vertical; min-height: 70px;
+    }
+
+    /* MODAL AUTOFIRMA */
+    #modalAutofirma {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.55); z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-box {
+      background: var(--blanco); border-radius: var(--radio);
+      padding: 2rem 2.5rem; text-align: center;
+      max-width: 380px; width: 90%; box-shadow: var(--sombra-md);
+    }
+    .modal-spinner {
+      width: 48px; height: 48px;
+      border: 4px solid var(--azul-bg); border-top-color: var(--azul-claro);
+      border-radius: 50%; margin: 0 auto 1.25rem;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .modal-box h3 { color: var(--azul); margin-bottom: .5rem; }
+    .modal-box p  { font-size: .85rem; color: var(--gris); }
+
+    /* TOAST */
+    #toastContainer {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      display: flex; flex-direction: column; gap: .5rem; z-index: 300;
+    }
+    .toast {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .75rem 1.1rem; border-radius: var(--radio-sm);
+      box-shadow: var(--sombra-md); font-size: .88rem; font-weight: 500;
+      max-width: 360px; animation: slideIn .2s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(120%); opacity: 0; }
+      to   { transform: translateX(0);   opacity: 1; }
+    }
+    .toast span   { flex: 1; }
+    .toast button { background: none; border: none; cursor: pointer; font-size: 1rem; opacity: .7; padding: 0; }
+    .toast button:hover { opacity: 1; }
+    .toast-success { background: var(--verde-bg); color: var(--verde); border: 1px solid #86efac; }
+    .toast-error   { background: var(--rojo-bg);  color: var(--rojo);  border: 1px solid #fca5a5; }
+    .toast-warning { background: var(--ambar-bg); color: var(--ambar); border: 1px solid #fcd34d; }
+    .toast-info    { background: var(--azul-bg);  color: var(--azul);  border: 1px solid #93c5fd; }
+
+    /* INFO BOX */
+    .info-box {
+      background: var(--azul-bg); border: 1px solid #bfdbfe;
+      border-radius: var(--radio-sm); padding: .75rem 1rem;
+      font-size: .82rem; color: #1d4ed8; margin-top: 1rem;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 600px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .detalle-grid { grid-template-columns: 1fr; }
+      .header-sub { display: none; }
+      .panel { padding: 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="site-header">
+  <div class="header-brand">
+    <div class="header-logo">✈</div>
+    <div>
+      <div class="header-title">VacaFirma</div>
+      <div class="header-sub">Base Aérea de Albacete · Ejército del Aire y del Espacio</div>
+    </div>
+  </div>
+  <div class="header-auth">
+    <span id="authStatus"></span>
+    <span id="userRoleBadge" class="hidden"></span>
+    <button id="btnLogin">Acceder</button>
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- PANEL LOGIN -->
+  <div id="panelLogin" class="panel">
+    <div class="login-header">
+      <div class="login-emblem">🔐</div>
+      <h2>Acceso a VacaFirma</h2>
+      <p>Introduce tu correo para recibir un enlace de acceso seguro</p>
+    </div>
+
+    <div class="form-group">
+      <label for="loginEmail">Correo electrónico</label>
+      <input type="email" id="loginEmail" placeholder="nombre@ejercitodelaire.es" autocomplete="email">
+    </div>
+
+    <button class="btn btn-primary" id="btnSendMagicLink" style="width:100%">
+      📧 Enviar enlace de acceso
+    </button>
+    <p id="loginMessage"></p>
+
+    <div class="login-divider">o</div>
+
+    <button id="togglePasswordLogin">Acceder con contraseña</button>
+
+    <div id="loginPasswordSection" style="display:none; margin-top:1rem;">
+      <div class="form-group">
+        <label for="loginPassword">Contraseña</label>
+        <input type="password" id="loginPassword" placeholder="Contraseña" autocomplete="current-password">
+      </div>
+      <button class="btn btn-ghost" id="btnLoginPassword" style="width:100%">
+        Entrar con contraseña
+      </button>
+    </div>
+
+    <div class="info-box" style="margin-top:1.5rem;">
+      ℹ️ Si es tu primera vez, pulsa <strong>Enviar enlace de acceso</strong>.
+      Recibirás un email con un enlace para entrar. No es necesaria contraseña.
+    </div>
+  </div>
+
+  <!-- PANEL PERFIL (primer acceso) -->
+  <div id="panelPerfil" class="panel hidden">
+    <h2 class="panel-title">👤 Completa tu perfil</h2>
+    <p style="color:var(--gris); margin-bottom:1.5rem; font-size:.9rem;">
+      Es la primera vez que accedes. Por favor, introduce tus datos militares. Solo se hace una vez.
+    </p>
+
+    <div class="form-grid">
+      <div class="form-group form-full">
+        <label for="perfilNombre">Nombre completo <span style="color:var(--rojo)">*</span></label>
+        <input type="text" id="perfilNombre" placeholder="Apellido1 Apellido2, Nombre">
+      </div>
+      <div class="form-group">
+        <label for="perfilEmpleo">Empleo <span style="color:var(--rojo)">*</span></label>
+        <input type="text" id="perfilEmpleo" placeholder="Sargento 1º, Teniente…">
+      </div>
+      <div class="form-group">
+        <label for="perfilDNI">DNI / NIF <span style="color:var(--rojo)">*</span></label>
+        <input type="text" id="perfilDNI" placeholder="12345678A" maxlength="9">
+      </div>
+      <div class="form-group form-full">
+        <label for="perfilDependencia">Sección / Dependencia</label>
+        <input type="text" id="perfilDependencia" placeholder="Sección de Operaciones, Célula CIS…">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnGuardarPerfil">Guardar y continuar →</button>
+    </div>
+  </div>
+
+  <!-- PANEL DASHBOARD -->
+  <div id="panelDashboard" class="panel hidden">
+    <div class="dashboard-top">
+      <h2 class="panel-title" style="margin-bottom:0; border:none; padding:0">
+        📋 Solicitudes
+      </h2>
+      <button class="btn btn-primary" id="btnNuevoPermiso">＋ Nueva solicitud</button>
+    </div>
+
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Interesado</th>
+            <th>Inicio</th>
+            <th>Fin</th>
+            <th>Tipo</th>
+            <th>Estado</th>
+            <th title="Firma interesado">✍ Int.</th>
+            <th title="Firma jefe sección">✍ J.Sec.</th>
+            <th title="Firma jefe grupo">✍ J.Grp.</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tablaSolicitudes">
+          <tr class="empty-row"><td colspan="9">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PANEL FORMULARIO NUEVA SOLICITUD -->
+  <div id="panelFormulario" class="panel hidden">
+    <h2 class="panel-title">📝 Nueva solicitud de permiso</h2>
+
+    <p class="form-section-title">Tipo de permiso</p>
+    <div class="form-group">
+      <label for="tipoPermiso">Tipo <span style="color:var(--rojo)">*</span></label>
+      <select id="tipoPermiso">
+        <option value="">— Selecciona —</option>
+        <option value="vacaciones">Vacaciones</option>
+        <option value="asuntos_particulares">Asuntos Particulares</option>
+        <option value="dias_adicionales">Días Adicionales</option>
+        <option value="permiso_extraordinario">Permiso Extraordinario</option>
+      </select>
+    </div>
+
+    <div id="motivoWrap" class="form-group hidden">
+      <label for="motivo">Motivo <span style="color:var(--rojo)">*</span></label>
+      <textarea id="motivo" placeholder="Describe el motivo del permiso extraordinario…"></textarea>
+    </div>
+
+    <p class="form-section-title">Período</p>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="fechaInicio">Fecha inicio <span style="color:var(--rojo)">*</span></label>
+        <input type="date" id="fechaInicio">
+      </div>
+      <div class="form-group">
+        <label for="fechaFin">Fecha fin <span style="color:var(--rojo)">*</span></label>
+        <input type="date" id="fechaFin">
+      </div>
+      <div class="form-group form-full">
+        <label for="diasHabiles">Días hábiles solicitados</label>
+        <input type="number" id="diasHabiles" min="1" max="60" value="1" style="max-width:120px">
+      </div>
+    </div>
+
+    <p class="form-section-title">Localización durante el permiso</p>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="direccion">Dirección</label>
+        <input type="text" id="direccion" placeholder="Calle, nº, localidad">
+      </div>
+      <div class="form-group">
+        <label for="telefono">Teléfono de contacto</label>
+        <input type="tel" id="telefono" placeholder="600 000 000">
+      </div>
+    </div>
+
+    <p class="form-section-title">Observaciones</p>
+    <div class="form-group">
+      <label for="observaciones">Observaciones (opcional)</label>
+      <textarea id="observaciones" placeholder="Cualquier información adicional…"></textarea>
+    </div>
+
+    <p class="form-section-title">Cadena de mando</p>
+    <div class="form-group">
+      <label for="emailJefe">Correo del Jefe de Sección <span style="color:var(--rojo)">*</span></label>
+      <input type="email" id="emailJefe" placeholder="jefe.seccion@ejercitodelaire.es">
+      <small style="color:var(--gris); font-size:.78rem; margin-top:.25rem; display:block;">
+        Recibirá una notificación por correo cuando firmes tu solicitud.
+      </small>
+    </div>
+
+    <div class="info-box">
+      🔏 Al pulsar <strong>Firmar y enviar</strong>, se abrirá <strong>AutoFirma</strong>.
+      Asegúrate de tenerlo instalado y tu tarjeta DNIe o tarjeta PKI conectada.
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnFirmarEnviar">🖊 Firmar y enviar</button>
+      <button class="btn btn-ghost"   id="btnCancelarForm">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- PANEL DETALLE / FIRMA -->
+  <div id="panelDetalle" class="panel hidden">
+    <h2 class="panel-title">📄 Detalle de la solicitud</h2>
+
+    <div id="detallePermiso"></div>
+
+    <p class="form-section-title" style="margin-top:1.5rem">Estado de las firmas</p>
+    <div class="firmas-lista" id="firmasEstado"></div>
+
+    <!-- Acción para jefes -->
+    <div id="seccionFirmaJefe" style="display:none">
+      <h3>Acción requerida</h3>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn btn-success" id="btnAprobar">🖊 Aprobar y firmar</button>
+        <button class="btn btn-danger"  id="btnRechazar">✗ Rechazar</button>
+        <button class="btn btn-ghost"   id="btnDescargarPDF">⬇ Descargar PDF</button>
+      </div>
+
+      <div id="rechazarWrap" style="display:none; margin-top:1rem;">
+        <label for="motivoRechazo">Motivo del rechazo (obligatorio)</label>
+        <textarea id="motivoRechazo" placeholder="Explica el motivo del rechazo…"></textarea>
+        <div class="btn-row">
+          <button class="btn btn-danger" id="btnConfirmarRechazo">Confirmar rechazo</button>
+          <button class="btn btn-ghost"  id="btnCancelarRechazo">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Para empleados y vista sin acción disponible -->
+    <div id="seccionDescargaEmpleado">
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnDescargarPDF2">⬇ Descargar PDF</button>
+        <button class="btn btn-ghost" id="btnVolverDetalle">← Volver</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- MODAL AUTOFIRMA -->
+<div id="modalAutofirma" class="hidden">
+  <div class="modal-box">
+    <div class="modal-spinner"></div>
+    <h3>AutoFirma en proceso</h3>
+    <p>Se ha abierto AutoFirma. Selecciona tu certificado (DNIe o PKI) y acepta la firma.</p>
+    <p style="margin-top:.75rem; font-size:.78rem; color:var(--gris);">
+      Si AutoFirma no se abre, asegúrate de que está instalado en tu equipo y vuelve a intentarlo.
+    </p>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toastContainer"></div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
