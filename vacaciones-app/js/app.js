@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (session) {
       state.user    = session.user;
       state.profile = await getUserProfile(session.user.id);
-      if (!state.profile) {
+      if (!state.profile || !state.profile.nombre_completo) {
         mostrarPanel('panelPerfil');
       } else {
         await cargarDashboard();
