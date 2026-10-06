@@ -117,61 +117,81 @@ async function crearPermiso(datos) {
 async function getMisPermisos(userId) {
   const { data, error } = await _supabase
     .from('permisos')
-    .select(`
-      *,
-      empleado:user_profiles!permisos_empleado_id_fkey(nombre_completo, empleo, dependencia),
-      firmas(*)
-    `)
+    .select('*, firmas(*)')
     .eq('empleado_id', userId)
     .order('created_at', { ascending: false });
   if (error) throw error;
+  // El empleado solo ve sus propios permisos, no necesita enriquecer otros perfiles
   return data || [];
 }
 
 async function getPermisosParaJefeSeccion(jefeId) {
   const { data, error } = await _supabase
     .from('permisos')
-    .select(`
-      *,
-      empleado:user_profiles!permisos_empleado_id_fkey(nombre_completo, empleo, dependencia),
-      firmas(*)
-    `)
+    .select('*, firmas(*)')
     .eq('jefe_seccion_id', jefeId)
     .in('estado', ['firmada_empleado', 'aprobada_jefe_seccion',
                    'rechazada_jefe_seccion', 'aprobada', 'rechazada'])
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+  // Enriquecer con perfil del empleado
+  return await _enriquecerConPerfiles(data || []);
 }
 
 async function getPermisosParaJefeGrupo() {
   const { data, error } = await _supabase
     .from('permisos')
-    .select(`
-      *,
-      empleado:user_profiles!permisos_empleado_id_fkey(nombre_completo, empleo, dependencia),
-      jefe_sec:user_profiles!permisos_jefe_seccion_id_fkey(nombre_completo),
-      firmas(*)
-    `)
+    .select('*, firmas(*)')
     .in('estado', ['aprobada_jefe_seccion', 'aprobada', 'rechazada'])
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return await _enriquecerConPerfiles(data || []);
+}
+
+async function _enriquecerConPerfiles(permisos) {
+  if (!permisos.length) return permisos;
+  // Recoge todos los IDs únicos de empleados y jefes de sección
+  const ids = [...new Set([
+    ...permisos.map(p => p.empleado_id),
+    ...permisos.map(p => p.jefe_seccion_id).filter(Boolean),
+  ])];
+  // Usamos RPC con SECURITY DEFINER para leer perfiles de otros usuarios
+  // sin recursión en RLS
+  const { data: perfiles } = await _supabase
+    .rpc('get_profiles_by_ids', { ids });
+  const mapaPerfiles = Object.fromEntries((perfiles || []).map(p => [p.id, p]));
+  return permisos.map(p => ({
+    ...p,
+    empleado: mapaPerfiles[p.empleado_id] || {},
+    jefe_sec: mapaPerfiles[p.jefe_seccion_id] || {},
+  }));
 }
 
 async function getPermisoById(id) {
   const { data, error } = await _supabase
     .from('permisos')
-    .select(`
-      *,
-      empleado:user_profiles!permisos_empleado_id_fkey(*),
-      jefe_sec:user_profiles!permisos_jefe_seccion_id_fkey(nombre_completo, empleo, email),
-      firmas(*, firmante:user_profiles(nombre_completo, empleo, dni))
-    `)
+    .select('*, firmas(*)')
     .eq('id', id)
     .single();
   if (error) throw error;
-  return data;
+  // Enriquecer perfiles
+  const ids = [...new Set([
+    data.empleado_id,
+    data.jefe_seccion_id,
+    ...(data.firmas || []).map(f => f.firmante_id),
+  ].filter(Boolean))];
+  const { data: perfiles } = await _supabase
+    .rpc('get_profiles_by_ids', { ids });
+  const mapa = Object.fromEntries((perfiles || []).map(p => [p.id, p]));
+  return {
+    ...data,
+    empleado: mapa[data.empleado_id] || {},
+    jefe_sec: mapa[data.jefe_seccion_id] || {},
+    firmas: (data.firmas || []).map(f => ({
+      ...f,
+      firmante: mapa[f.firmante_id] || {},
+    })),
+  };
 }
 
 async function actualizarTrasFirmaEmpleado(permisoId, pdfUrl) {
@@ -270,11 +290,16 @@ async function registrarFirma({ permiso_id, firmante_id, rol_firma, certInfo, ac
 async function getFirmasDePermiso(permisoId) {
   const { data, error } = await _supabase
     .from('firmas')
-    .select('*, firmante:user_profiles(nombre_completo, empleo, dni)')
+    .select('*')
     .eq('permiso_id', permisoId)
     .order('firmado_en', { ascending: true });
   if (error) throw error;
-  return data || [];
+  const firmas = data || [];
+  if (!firmas.length) return firmas;
+  const ids = [...new Set(firmas.map(f => f.firmante_id).filter(Boolean))];
+  const { data: perfiles } = await _supabase.rpc('get_profiles_by_ids', { ids });
+  const mapa = Object.fromEntries((perfiles || []).map(p => [p.id, p]));
+  return firmas.map(f => ({ ...f, firmante: mapa[f.firmante_id] || {} }));
 }
 
 // ══════════════════════════════════════════════════════════════
