@@ -80,13 +80,11 @@ async function getJefeGrupo() {
 }
 
 async function buscarUsuarioPorEmail(email) {
+  // Usamos RPC con SECURITY DEFINER para poder leer perfiles de otros usuarios
   const { data, error } = await _supabase
-    .from('user_profiles')
-    .select('*')
-    .ilike('email', email.trim())
-    .single();
-  if (error && error.code !== 'PGRST116') throw error;
-  return data || null;
+    .rpc('get_profile_by_email', { p_email: email.trim() });
+  if (error) throw error;
+  return (data && data.length > 0) ? data[0] : null;
 }
 
 // ══════════════════════════════════════════════════════════════
