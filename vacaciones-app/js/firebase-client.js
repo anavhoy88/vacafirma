@@ -1,0 +1,424 @@
+// ═══════════════════════════════════════════════════════════════
+// firebase-client.js — VacaFirma 2.0
+// Reemplaza supabase-client.js usando Firebase como backend.
+// Las funciones exportadas mantienen la misma firma para que
+// app.js no necesite cambios.
+// ═══════════════════════════════════════════════════════════════
+
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {
+  getAuth,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  addDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+  Timestamp,
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  getBytes,
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
+
+// ── Inicialización ─────────────────────────────────────────────
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyAKyL_elQeUfxfYeyPcpmI4Mlq7UTy3DxY",
+  authDomain:        "vacafirma.firebaseapp.com",
+  projectId:         "vacafirma",
+  storageBucket:     "vacafirma.firebasestorage.app",
+  messagingSenderId: "352797871816",
+  appId:             "1:352797871816:web:508aaed15e857bde7c1ffd",
+};
+
+const _app     = initializeApp(firebaseConfig);
+const _auth    = getAuth(_app);
+const _db      = getFirestore(_app);
+const _storage = getStorage(_app);
+
+// URL de la app (para magic link y redirección)
+const APP_URL = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
+
+// ══════════════════════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════════════════════
+
+async function enviarMagicLink(email) {
+  const actionCodeSettings = {
+    url: APP_URL,
+    handleCodeInApp: true,
+  };
+  await sendSignInLinkToEmail(_auth, email, actionCodeSettings);
+  // Guardamos el email para usarlo cuando el usuario vuelve con el link
+  window.localStorage.setItem('vacafirma_emailForSignIn', email);
+}
+
+async function loginConContrasena(email, password) {
+  const result = await signInWithEmailAndPassword(_auth, email, password);
+  return result;
+}
+
+async function logout() {
+  await signOut(_auth);
+}
+
+function onAuthStateChange(callback) {
+  // Primero comprobamos si la URL actual es un magic link
+  if (isSignInWithEmailLink(_auth, window.location.href)) {
+    let email = window.localStorage.getItem('vacafirma_emailForSignIn');
+    if (!email) {
+      // Si no tenemos el email guardado, pedirlo
+      email = window.prompt('Introduce tu correo para confirmar el acceso:');
+    }
+    if (email) {
+      signInWithEmailLink(_auth, email, window.location.href)
+        .then(() => {
+          window.localStorage.removeItem('vacafirma_emailForSignIn');
+          // Limpiar el hash/query de la URL sin recargar
+          window.history.replaceState({}, document.title, window.location.pathname);
+        })
+        .catch(err => console.error('Error al procesar magic link:', err));
+    }
+  }
+
+  onAuthStateChanged(_auth, (user) => {
+    // Adaptamos el objeto user de Firebase al formato que espera app.js
+    // (que espera un "session" con session.user.id y session.user.email)
+    if (user) {
+      callback({
+        user: {
+          id:    user.uid,
+          email: user.email,
+        }
+      });
+    } else {
+      callback(null);
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// USER PROFILES
+// ══════════════════════════════════════════════════════════════
+
+async function getUserProfile(userId) {
+  const snap = await getDoc(doc(_db, 'user_profiles', userId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
+async function createOrUpdateProfile(profile) {
+  const { id, ...datos } = profile;
+  datos.updated_at = serverTimestamp();
+  if (!datos.created_at) datos.created_at = serverTimestamp();
+  await setDoc(doc(_db, 'user_profiles', id), datos, { merge: true });
+  return { id, ...datos };
+}
+
+async function getJefeGrupo() {
+  const q = query(
+    collection(_db, 'user_profiles'),
+    where('rol', '==', 'jefe_grupo'),
+    where('activo', '==', true)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+async function buscarUsuarioPorEmail(email) {
+  const q = query(
+    collection(_db, 'user_profiles'),
+    where('email', '==', email.trim().toLowerCase())
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+// Helper: enriquece permisos con perfiles de empleado y jefe_sec
+async function _enriquecerConPerfiles(permisos) {
+  if (!permisos.length) return permisos;
+  const ids = [...new Set([
+    ...permisos.map(p => p.empleado_id),
+    ...permisos.map(p => p.jefe_seccion_id).filter(Boolean),
+  ])];
+  // Firestore no tiene IN de más de 30 — suficiente para este caso
+  const perfiles = {};
+  await Promise.all(ids.map(async id => {
+    const snap = await getDoc(doc(_db, 'user_profiles', id));
+    if (snap.exists()) perfiles[id] = { id: snap.id, ...snap.data() };
+  }));
+  return permisos.map(p => ({
+    ...p,
+    empleado:  perfiles[p.empleado_id]    || {},
+    jefe_sec:  perfiles[p.jefe_seccion_id] || {},
+  }));
+}
+
+// ══════════════════════════════════════════════════════════════
+// PERMISOS — CRUD
+// ══════════════════════════════════════════════════════════════
+
+async function crearPermiso(datos) {
+  let jefe_seccion_id = null;
+  if (datos.jefe_seccion_email) {
+    const jefe = await buscarUsuarioPorEmail(datos.jefe_seccion_email);
+    if (jefe) jefe_seccion_id = jefe.id;
+  }
+
+  const permiso = {
+    ...datos,
+    jefe_seccion_id,
+    estado:     'borrador',
+    anio:       new Date(datos.fecha_inicio).getFullYear(),
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  };
+
+  const ref = await addDoc(collection(_db, 'permisos'), permiso);
+  return { id: ref.id, ...permiso };
+}
+
+async function getMisPermisos(userId) {
+  const q = query(
+    collection(_db, 'permisos'),
+    where('empleado_id', '==', userId),
+    orderBy('created_at', 'desc')
+  );
+  const snap = await getDocs(q);
+  const permisos = await Promise.all(snap.docs.map(async d => {
+    const permiso = { id: d.id, ...d.data() };
+    // Cargar firmas
+    const firmasSnap = await getDocs(collection(_db, 'permisos', d.id, 'firmas'));
+    permiso.firmas = firmasSnap.docs.map(f => ({ id: f.id, ...f.data() }));
+    return permiso;
+  }));
+  return permisos;
+}
+
+async function getPermisosParaJefeSeccion(jefeId) {
+  const q = query(
+    collection(_db, 'permisos'),
+    where('jefe_seccion_id', '==', jefeId),
+    orderBy('created_at', 'desc')
+  );
+  const snap = await getDocs(q);
+  const estados = ['firmada_empleado','aprobada_jefe_seccion','rechazada_jefe_seccion','aprobada','rechazada'];
+  const permisos = await Promise.all(
+    snap.docs
+      .filter(d => estados.includes(d.data().estado))
+      .map(async d => {
+        const permiso = { id: d.id, ...d.data() };
+        const firmasSnap = await getDocs(collection(_db, 'permisos', d.id, 'firmas'));
+        permiso.firmas = firmasSnap.docs.map(f => ({ id: f.id, ...f.data() }));
+        return permiso;
+      })
+  );
+  return await _enriquecerConPerfiles(permisos);
+}
+
+async function getPermisosParaJefeGrupo() {
+  const estados = ['aprobada_jefe_seccion', 'aprobada', 'rechazada'];
+  // Firestore no permite OR en where, hacemos 3 queries
+  const resultados = await Promise.all(estados.map(estado =>
+    getDocs(query(collection(_db, 'permisos'), where('estado', '==', estado), orderBy('created_at', 'desc')))
+  ));
+  const permisos = await Promise.all(
+    resultados.flatMap(snap => snap.docs).map(async d => {
+      const permiso = { id: d.id, ...d.data() };
+      const firmasSnap = await getDocs(collection(_db, 'permisos', d.id, 'firmas'));
+      permiso.firmas = firmasSnap.docs.map(f => ({ id: f.id, ...f.data() }));
+      return permiso;
+    })
+  );
+  // Ordenar por fecha desc
+  permisos.sort((a, b) => {
+    const ta = a.created_at?.seconds || 0;
+    const tb = b.created_at?.seconds || 0;
+    return tb - ta;
+  });
+  return await _enriquecerConPerfiles(permisos);
+}
+
+async function getPermisoById(id) {
+  const snap = await getDoc(doc(_db, 'permisos', id));
+  if (!snap.exists()) throw new Error('Permiso no encontrado');
+  const permiso = { id: snap.id, ...snap.data() };
+
+  // Cargar firmas (subcolección)
+  const firmasSnap = await getDocs(collection(_db, 'permisos', id, 'firmas'));
+  permiso.firmas = firmasSnap.docs.map(f => ({ id: f.id, ...f.data() }));
+
+  // Enriquecer perfiles
+  const ids = [...new Set([
+    permiso.empleado_id,
+    permiso.jefe_seccion_id,
+    ...permiso.firmas.map(f => f.firmante_id),
+  ].filter(Boolean))];
+
+  const perfiles = {};
+  await Promise.all(ids.map(async uid => {
+    const pSnap = await getDoc(doc(_db, 'user_profiles', uid));
+    if (pSnap.exists()) perfiles[uid] = { id: pSnap.id, ...pSnap.data() };
+  }));
+
+  return {
+    ...permiso,
+    empleado:  perfiles[permiso.empleado_id]    || {},
+    jefe_sec:  perfiles[permiso.jefe_seccion_id] || {},
+    firmas: permiso.firmas.map(f => ({
+      ...f,
+      firmante: perfiles[f.firmante_id] || {},
+    })),
+  };
+}
+
+async function _actualizarPermiso(permisoId, campos) {
+  await updateDoc(doc(_db, 'permisos', permisoId), {
+    ...campos,
+    updated_at: serverTimestamp(),
+  });
+  return getPermisoById(permisoId);
+}
+
+async function actualizarTrasFirmaEmpleado(permisoId, pdfUrl) {
+  return _actualizarPermiso(permisoId, { estado: 'firmada_empleado', pdf_url: pdfUrl });
+}
+
+async function aprobarJefeSeccion(permisoId, pdfUrl) {
+  return _actualizarPermiso(permisoId, { estado: 'aprobada_jefe_seccion', pdf_url: pdfUrl });
+}
+
+async function rechazarJefeSeccion(permisoId, motivo) {
+  return _actualizarPermiso(permisoId, {
+    estado: 'rechazada_jefe_seccion',
+    motivo_rechazo: motivo,
+    rechazado_por: 'jefe_seccion',
+  });
+}
+
+async function aprobarJefeGrupo(permisoId, pdfFinalUrl) {
+  return _actualizarPermiso(permisoId, { estado: 'aprobada', pdf_final_url: pdfFinalUrl });
+}
+
+async function rechazarJefeGrupo(permisoId, motivo) {
+  return _actualizarPermiso(permisoId, {
+    estado: 'rechazada',
+    motivo_rechazo: motivo,
+    rechazado_por: 'jefe_grupo',
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// FIRMAS — registro criptográfico
+// ══════════════════════════════════════════════════════════════
+
+async function registrarFirma({ permiso_id, firmante_id, rol_firma, certInfo, accion, motivo_rechazo }) {
+  const firma = {
+    permiso_id,
+    firmante_id,
+    rol_firma,
+    nombre_cert:    certInfo.nombre || '',
+    dni_cert:       certInfo.dni    || '',
+    cert_b64:       certInfo.raw    || '',
+    cert_hash:      certInfo.hash   || '',
+    accion,
+    motivo_rechazo: motivo_rechazo || null,
+    firmado_en:     new Date().toISOString(),
+  };
+  // Guardamos en subcolección permisos/{id}/firmas
+  const ref = await addDoc(collection(_db, 'permisos', permiso_id, 'firmas'), firma);
+  return { id: ref.id, ...firma };
+}
+
+async function getFirmasDePermiso(permisoId) {
+  const snap = await getDocs(collection(_db, 'permisos', permisoId, 'firmas'));
+  const firmas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Enriquecer con perfil del firmante
+  const ids = [...new Set(firmas.map(f => f.firmante_id).filter(Boolean))];
+  const perfiles = {};
+  await Promise.all(ids.map(async uid => {
+    const pSnap = await getDoc(doc(_db, 'user_profiles', uid));
+    if (pSnap.exists()) perfiles[uid] = { id: pSnap.id, ...pSnap.data() };
+  }));
+  return firmas.map(f => ({ ...f, firmante: perfiles[f.firmante_id] || {} }));
+}
+
+// ══════════════════════════════════════════════════════════════
+// STORAGE — subir y obtener PDFs
+// ══════════════════════════════════════════════════════════════
+
+async function subirPDF(userId, permisoId, pdfBytes, sufijo = '') {
+  const nombre = `permisos/${userId}/${permisoId}${sufijo ? '_' + sufijo : ''}_${Date.now()}.pdf`;
+  const storageRef = ref(_storage, nombre);
+  await uploadBytes(storageRef, pdfBytes, { contentType: 'application/pdf' });
+  return nombre; // devolvemos el path, igual que Supabase
+}
+
+async function getUrlPDF(path) {
+  const storageRef = ref(_storage, path);
+  return await getDownloadURL(storageRef);
+}
+
+async function descargarPDF(path) {
+  const storageRef = ref(_storage, path);
+  const buffer = await getBytes(storageRef);
+  return new Uint8Array(buffer);
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPONER FUNCIONES COMO GLOBALES
+// (app.js se carga como script clásico y las llama directamente)
+// ══════════════════════════════════════════════════════════════
+
+Object.assign(window, {
+  // Auth
+  enviarMagicLink,
+  loginConContrasena,
+  logout,
+  onAuthStateChange,
+  // Perfiles
+  getUserProfile,
+  createOrUpdateProfile,
+  getJefeGrupo,
+  buscarUsuarioPorEmail,
+  // Permisos
+  crearPermiso,
+  getMisPermisos,
+  getPermisosParaJefeSeccion,
+  getPermisosParaJefeGrupo,
+  getPermisoById,
+  actualizarTrasFirmaEmpleado,
+  aprobarJefeSeccion,
+  rechazarJefeSeccion,
+  aprobarJefeGrupo,
+  rechazarJefeGrupo,
+  // Firmas
+  registrarFirma,
+  getFirmasDePermiso,
+  // Storage
+  subirPDF,
+  getUrlPDF,
+  descargarPDF,
+});
