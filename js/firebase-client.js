@@ -370,22 +370,50 @@ async function getFirmasDePermiso(permisoId) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// STORAGE — subir y obtener PDFs
+// PDF — almacenado en Firestore como base64 (evita CORS de Storage)
+// El "path" que devolvemos es "firestore:{permisoId}:{campo}" para
+// que app.js pueda seguir llamando a getUrlPDF / descargarPDF con
+// la misma interfaz.
 // ══════════════════════════════════════════════════════════════
 
 async function subirPDF(userId, permisoId, pdfBytes, sufijo = '') {
-  const nombre = `permisos/${userId}/${permisoId}${sufijo ? '_' + sufijo : ''}_${Date.now()}.pdf`;
-  const storageRef = ref(_storage, nombre);
-  await uploadBytes(storageRef, pdfBytes, { contentType: 'application/pdf' });
-  return nombre; // devolvemos el path, igual que Supabase
+  // Convertir Uint8Array → base64
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(pdfBytes)));
+  const campo  = sufijo === 'final' ? 'pdf_b64_final' : 'pdf_b64';
+  await updateDoc(doc(_db, 'permisos', permisoId), {
+    [campo]: base64,
+    updated_at: serverTimestamp(),
+  });
+  // Devolvemos un pseudo-path reconocible
+  return `firestore:${permisoId}:${campo}`;
 }
 
 async function getUrlPDF(path) {
+  // Si es un pseudo-path de Firestore, generamos un blob URL
+  if (path && path.startsWith('firestore:')) {
+    const bytes = await descargarPDF(path);
+    const blob  = new Blob([bytes], { type: 'application/pdf' });
+    return URL.createObjectURL(blob);
+  }
+  // Fallback: intentar Storage (puede fallar por CORS)
   const storageRef = ref(_storage, path);
   return await getDownloadURL(storageRef);
 }
 
 async function descargarPDF(path) {
+  if (path && path.startsWith('firestore:')) {
+    const [, permisoId, campo] = path.split(':');
+    const snap = await getDoc(doc(_db, 'permisos', permisoId));
+    if (!snap.exists()) throw new Error('Permiso no encontrado');
+    const base64 = snap.data()[campo];
+    if (!base64) throw new Error('PDF no disponible');
+    // Decodificar base64 → Uint8Array
+    const binary = atob(base64);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+  // Fallback: Storage
   const storageRef = ref(_storage, path);
   const buffer = await getBytes(storageRef);
   return new Uint8Array(buffer);
