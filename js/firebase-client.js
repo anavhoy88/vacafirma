@@ -39,15 +39,19 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
 // ── Inicialización ─────────────────────────────────────────────
+// La config se lee de js/firebase-config.js (excluido de git).
+// Si no existe ese archivo, se usa la config embebida como fallback.
 
-const firebaseConfig = {
-  apiKey:            "AIzaSyAKyL_elQeUfxfYeyPcpmI4Mlq7UTy3DxY",
-  authDomain:        "vacafirma.firebaseapp.com",
-  projectId:         "vacafirma",
-  storageBucket:     "vacafirma.firebasestorage.app",
-  messagingSenderId: "352797871816",
-  appId:             "1:352797871816:web:508aaed15e857bde7c1ffd",
-};
+const firebaseConfig = (typeof window.__FIREBASE_CONFIG__ !== 'undefined')
+  ? window.__FIREBASE_CONFIG__
+  : {
+      apiKey:            "AIzaSyAKyL_elQeUfxfYeyPcpmI4Mlq7UTy3DxY",
+      authDomain:        "vacafirma.firebaseapp.com",
+      projectId:         "vacafirma",
+      storageBucket:     "vacafirma.firebasestorage.app",
+      messagingSenderId: "352797871816",
+      appId:             "1:352797871816:web:508aaed15e857bde7c1ffd",
+    };
 
 const _app     = initializeApp(firebaseConfig);
 const _auth    = getAuth(_app);
