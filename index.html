@@ -3,13 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Solicitud de Vacaciones — Sistema de Firma Digital</title>
+  <title>VacaFirma — Solicitud de Permisos con Firma Digital</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <!-- pdf-lib (sin cambios) -->
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <!-- Firebase se carga como módulo en js/firebase-client.js -->
 </head>
 <body>
 
@@ -33,7 +31,7 @@
   <!-- ═══════════════════════════════════════════════════ MAIN -->
   <main class="app-main">
 
-    <!-- ── LOGIN PANEL ── -->
+    <!-- ── PANEL LOGIN ── -->
     <section class="panel" id="panelLogin">
       <div class="panel-inner login-panel">
         <div class="login-art">
@@ -43,8 +41,8 @@
           <span class="art-icon">✦</span>
         </div>
         <div class="login-content">
-          <h1 class="display-title">Solicitud de<br/><em>Vacaciones</em></h1>
-          <p class="login-desc">Accede con tu correo institucional para crear, firmar o aprobar solicitudes de vacaciones con certificado digital.</p>
+          <h1 class="display-title">Solicitud de<br/><em>Permisos</em></h1>
+          <p class="login-desc">Accede con tu correo institucional para crear, firmar o aprobar solicitudes de permisos con certificado digital.</p>
 
           <form id="loginForm" action="javascript:void(0)" autocomplete="on">
             <div class="input-group">
@@ -52,7 +50,6 @@
               <input type="email" id="loginEmail" name="email" placeholder="nombre@organismo.es" autocomplete="email" />
             </div>
 
-            <!-- Campo contraseña (oculto por defecto) -->
             <div id="loginPasswordSection" style="display:none;">
               <div class="input-group" style="margin-top:0.75rem;">
                 <label for="loginPassword">Contraseña</label>
@@ -82,14 +79,47 @@
       </div>
     </section>
 
-    <!-- ── DASHBOARD ── -->
+    <!-- ── PANEL PERFIL (primer acceso) ── -->
+    <section class="panel hidden" id="panelPerfil">
+      <div class="panel-inner" style="max-width:520px;margin:auto;">
+        <h2 class="section-title" style="margin-bottom:1.5rem;">Completa tu perfil</h2>
+        <p style="margin-bottom:1.5rem;color:var(--muted,#888);">Es la primera vez que accedes. Rellena tus datos para continuar.</p>
+
+        <div class="form-card">
+          <div class="input-group">
+            <label for="perfilNombre">Nombre completo <span style="color:red">*</span></label>
+            <input type="text" id="perfilNombre" placeholder="Ej: Juan García López" />
+          </div>
+          <div class="input-group">
+            <label for="perfilEmpleo">Empleo / Categoría <span style="color:red">*</span></label>
+            <input type="text" id="perfilEmpleo" placeholder="Ej: Sargento, Cabo 1º, …" />
+          </div>
+          <div class="input-group">
+            <label for="perfilDNI">DNI / NIF <span style="color:red">*</span></label>
+            <input type="text" id="perfilDNI" placeholder="12345678A" maxlength="10" />
+          </div>
+          <div class="input-group">
+            <label for="perfilDependencia">Dependencia / Unidad</label>
+            <input type="text" id="perfilDependencia" placeholder="Ej: Escuadrón de Apoyo, ALA 14…" />
+          </div>
+          <div style="margin-top:1.5rem;">
+            <button class="btn-primary" id="btnGuardarPerfil" style="width:100%;">
+              <span>Guardar y continuar</span>
+              <span class="btn-icon">→</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PANEL DASHBOARD ── -->
     <section class="panel hidden" id="panelDashboard">
       <div class="dashboard-header">
         <div>
           <h2 class="section-title">Mis solicitudes</h2>
           <p class="section-sub" id="userRoleBadge"></p>
         </div>
-        <button class="btn-primary" id="btnNuevaSolicitud">+ Nueva solicitud</button>
+        <button class="btn-primary" id="btnNuevoPermiso">+ Nueva solicitud</button>
       </div>
 
       <div class="table-wrapper">
@@ -99,7 +129,7 @@
               <th>Empleado</th>
               <th>Inicio</th>
               <th>Fin</th>
-              <th>Dirección</th>
+              <th>Tipo</th>
               <th>Estado</th>
               <th>Firma empleado</th>
               <th>Firma jefe 1</th>
@@ -116,36 +146,77 @@
       </div>
     </section>
 
-    <!-- ── FORMULARIO NUEVA SOLICITUD ── -->
+    <!-- ── PANEL FORMULARIO NUEVA SOLICITUD ── -->
     <section class="panel hidden" id="panelFormulario">
       <div class="form-header">
-        <button class="btn-back" id="btnVolverDashboard">← Volver</button>
-        <h2 class="section-title">Nueva solicitud de vacaciones</h2>
+        <button class="btn-back" id="btnCancelarForm">← Volver</button>
+        <h2 class="section-title">Nueva solicitud de permiso</h2>
       </div>
 
       <div class="form-grid">
         <div class="form-card">
-          <h3 class="card-title">Datos de las vacaciones</h3>
+          <h3 class="card-title">Datos del permiso</h3>
 
+          <!-- Tipo de permiso -->
+          <div class="input-group">
+            <label for="tipoPermiso">Tipo de permiso <span style="color:red">*</span></label>
+            <select id="tipoPermiso">
+              <option value="">— Selecciona —</option>
+              <option value="vacaciones">Vacaciones</option>
+              <option value="asuntos_particulares">Asuntos Particulares</option>
+              <option value="dias_adicionales">Días Adicionales</option>
+              <option value="permiso_extraordinario">Permiso Extraordinario</option>
+            </select>
+          </div>
+
+          <!-- Fechas -->
           <div class="field-row">
             <div class="input-group">
-              <label for="fechaInicio">Fecha de inicio</label>
+              <label for="fechaInicio">Fecha de inicio <span style="color:red">*</span></label>
               <input type="date" id="fechaInicio" />
             </div>
             <div class="input-group">
-              <label for="fechaFin">Fecha de fin</label>
+              <label for="fechaFin">Fecha de fin <span style="color:red">*</span></label>
               <input type="date" id="fechaFin" />
             </div>
           </div>
 
+          <!-- Días hábiles -->
           <div class="input-group">
-            <label for="direccion">Dirección durante las vacaciones</label>
+            <label for="diasHabiles">Días hábiles <span style="color:red">*</span></label>
+            <input type="number" id="diasHabiles" min="1" max="90" placeholder="Ej: 22" />
+          </div>
+
+          <!-- Dirección -->
+          <div class="input-group">
+            <label for="direccion">Dirección durante el permiso</label>
             <input type="text" id="direccion" placeholder="Calle, número, ciudad, provincia…" />
           </div>
 
+          <!-- Teléfono -->
+          <div class="input-group">
+            <label for="telefono">Teléfono de contacto</label>
+            <input type="tel" id="telefono" placeholder="Ej: 600 123 456" />
+          </div>
+
+          <!-- Motivo (solo permiso extraordinario) -->
+          <div id="motivoWrap" style="display:none;">
+            <div class="input-group">
+              <label for="motivo">Motivo <span style="color:red">*</span></label>
+              <textarea id="motivo" rows="3" placeholder="Describe el motivo del permiso extraordinario…"></textarea>
+            </div>
+          </div>
+
+          <!-- Observaciones -->
           <div class="input-group">
             <label for="observaciones">Observaciones (opcional)</label>
-            <textarea id="observaciones" rows="3" placeholder="Cualquier nota adicional…"></textarea>
+            <textarea id="observaciones" rows="2" placeholder="Cualquier nota adicional…"></textarea>
+          </div>
+
+          <!-- Jefe de sección -->
+          <div class="input-group">
+            <label for="emailJefe">Correo del jefe de sección <span style="color:red">*</span></label>
+            <input type="email" id="emailJefe" placeholder="jefe@organismo.es" />
           </div>
         </div>
 
@@ -158,59 +229,73 @@
         </div>
       </div>
 
-      <!-- Firma del empleado -->
-      <div class="sign-section">
-        <h3 class="card-title">Firma digital del empleado</h3>
-        <p class="sign-desc">Necesitarás AutoFirma instalado y tu DNIe o certificado digital en el lector.</p>
-        <div class="sign-status" id="signStatusEmpleado">
-          <span class="sign-dot pending"></span>
-          <span>Pendiente de firma</span>
-        </div>
-        <div class="btn-row">
-          <button class="btn-sign" id="btnGenerarYFirmar">
-            <span class="sign-icon">🖊</span>
-            Generar PDF y firmar con AutoFirma
-          </button>
-        </div>
-        <div class="autofirma-info" id="autofirmaInfo" style="display:none">
-          <p>⚠️ Si AutoFirma no se abre automáticamente, <a href="#" id="linkDescargaAutofirma" target="_blank">descárgalo aquí</a> e inténtalo de nuevo.</p>
-        </div>
-      </div>
-
       <div class="form-actions">
-        <button class="btn-outline" id="btnCancelar">Cancelar</button>
-        <button class="btn-primary disabled" id="btnEnviar" disabled>Enviar solicitud firmada</button>
+        <button class="btn-outline" onclick="document.getElementById('btnCancelarForm').click()">Cancelar</button>
+        <button class="btn-primary" id="btnFirmarEnviar">
+          <span class="sign-icon">🖊</span>
+          Firmar y enviar solicitud
+        </button>
       </div>
     </section>
 
-    <!-- ── PANEL DE FIRMA PARA JEFES ── -->
-    <section class="panel hidden" id="panelFirmaJefe">
+    <!-- ── PANEL DETALLE / FIRMA JEFE ── -->
+    <section class="panel hidden" id="panelDetalle">
       <div class="form-header">
-        <button class="btn-back" id="btnVolverDashboard2">← Volver</button>
-        <h2 class="section-title">Aprobar y firmar solicitud</h2>
+        <button class="btn-back" id="btnVolverDetalle">← Volver</button>
+        <h2 class="section-title">Detalle de solicitud</h2>
       </div>
 
+      <!-- Datos de la solicitud -->
       <div class="jefe-grid">
         <div class="form-card">
-          <h3 class="card-title">Detalles de la solicitud</h3>
-          <div class="detail-table" id="detallesSolicitud"></div>
+          <h3 class="card-title">Información del permiso</h3>
+          <div id="detallePermiso"></div>
         </div>
         <div class="form-card">
           <h3 class="card-title">Estado de firmas</h3>
-          <div class="firmas-estado" id="firmasEstado"></div>
+          <div id="firmasEstado"></div>
         </div>
       </div>
 
-      <div class="sign-section">
-        <h3 class="card-title">Tu firma digital</h3>
-        <p class="sign-desc">Al firmar confirmas la aprobación de este período vacacional.</p>
-        <div class="sign-status" id="signStatusJefe">
-          <span class="sign-dot pending"></span>
-          <span>Pendiente de tu firma</span>
+      <!-- Acciones del jefe -->
+      <div class="sign-section" id="seccionFirmaJefe" style="display:none;">
+        <h3 class="card-title">Acción de firma</h3>
+        <p class="sign-desc">Al firmar, confirmas la aprobación o rechazo de esta solicitud.</p>
+
+        <div class="btn-row" style="gap:1rem;flex-wrap:wrap;">
+          <button class="btn-primary" id="btnAprobar">
+            <span class="sign-icon">✓</span>
+            Aprobar y firmar con AutoFirma
+          </button>
+          <button class="btn-outline" id="btnRechazar" style="color:var(--red,#c0392b);border-color:var(--red,#c0392b);">
+            Rechazar
+          </button>
         </div>
-        <button class="btn-sign" id="btnFirmarJefe">
-          <span class="sign-icon">🖊</span>
-          Firmar con AutoFirma (DNIe / certificado digital)
+
+        <!-- Formulario de rechazo (oculto) -->
+        <div id="rechazarWrap" style="display:none;margin-top:1rem;">
+          <div class="input-group">
+            <label for="motivoRechazo">Motivo del rechazo <span style="color:red">*</span></label>
+            <textarea id="motivoRechazo" rows="3" placeholder="Indica el motivo del rechazo…"></textarea>
+          </div>
+          <div class="btn-row" style="gap:1rem;margin-top:0.75rem;">
+            <button class="btn-primary" id="btnConfirmarRechazo" style="background:var(--red,#c0392b);">
+              Confirmar rechazo
+            </button>
+            <button class="btn-outline" id="btnCancelarRechazo">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Descarga de PDF -->
+      <div class="form-actions" style="margin-top:1.5rem;">
+        <div id="seccionDescargaEmpleado" style="display:none;">
+          <button class="btn-outline" id="btnDescargarPDF">
+            ⬇ Descargar PDF firmado
+          </button>
+        </div>
+        <button class="btn-outline" id="btnDescargarPDF2" style="display:none;">
+          ⬇ Descargar PDF final (aprobado)
         </button>
       </div>
     </section>
@@ -237,17 +322,11 @@
 
   <!--
     SCRIPTS — orden importante
-    ══════════════════════════════════════════════════════════════
-    1. firebase-client.js  → módulo ES (carga Firebase SDK desde gstatic.com)
-                             Al terminar, expone todas las funciones en window.*
-    2. autoscript.js       → utilidades AutoFirma (defer = espera al DOM)
+    1. firebase-client.js  → módulo ES (carga Firebase SDK y expone funciones en window.*)
+    2. autoscript.js       → utilidades AutoFirma (defer)
     3. pdf-generator.js    → generación del PDF (defer)
     4. autofirma.js        → integración AutoFirma (defer)
     5. app.js              → controlador principal (defer, usa window.*)
-
-    Los scripts con "defer" se ejecutan tras el parsing del HTML pero
-    DESPUÉS de que el módulo tipo "module" haya terminado (los módulos
-    son siempre diferidos). El orden dentro del mismo tipo se respeta.
   -->
   <script type="module" src="js/firebase-client.js"></script>
   <script src="js/autoscript.js" defer></script>
