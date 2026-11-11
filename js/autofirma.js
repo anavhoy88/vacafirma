@@ -5,7 +5,8 @@
 
 const AUTOFIRMA = {
   DOWNLOAD_URL: 'https://firmaelectronica.gob.es/Home/Descargas.html',
-  TIMEOUT_MS:   120000,
+  TIMEOUT_MS:   30000,  // 30 s — si AutoFirma no responde en 30 s, error claro
+  PUERTOS:      [62080, 58422, 55755, 57379, 62972, 51642, 59678, 54321],
 };
 
 let _autoscriptInicializado = false;
@@ -17,6 +18,30 @@ function inicializarAutoscript() {
   }
   AutoScript.cargarAppAfirma(window.location.origin);
   _autoscriptInicializado = true;
+}
+
+// Comprueba si AutoFirma está escuchando en algún puerto local.
+// Devuelve una promesa que resuelve a true si está disponible o rechaza con error.
+function comprobarAutofirmaDisponible() {
+  return new Promise(function(resolve, reject) {
+    var encontrado = false;
+    var comprobados = 0;
+    var PUERTOS_PRUEBA = [57379, 59678, 62080, 58422, 55755, 54321];
+    PUERTOS_PRUEBA.forEach(function(puerto) {
+      var img = new Image();
+      img.onload = img.onerror = function() {
+        comprobados++;
+        if (!encontrado && img.naturalWidth) { encontrado = true; }
+        if (comprobados === PUERTOS_PRUEBA.length && !encontrado) {
+          // Todos fallaron — puede que AutoFirma no esté abierto
+          // No rechazamos aquí; dejamos que el timeout decida
+        }
+      };
+      img.src = 'http://127.0.0.1:' + puerto + '/afirma?op=ping&v=1&_=' + Date.now();
+    });
+    // Resolvemos siempre — la comprobación es best-effort
+    setTimeout(function() { resolve(true); }, 1500);
+  });
 }
 
 // Firma PAdES invisible (sin coordenadas de posición).
@@ -53,9 +78,14 @@ async function firmarConAutofirma(pdfBytes, opciones) {
       },
       function(errorType, errorMessage) {
         clearTimeout(timer);
-        var msg = errorMessage || errorType || 'Error desconocido';
-        if (String(errorType).indexOf('Cancel') !== -1) {
+        var msg = errorMessage || errorType || '';
+        if (String(errorType).indexOf('Cancel') !== -1 || String(msg).indexOf('Cancel') !== -1) {
           reject(new AutofirmaError('Firma cancelada por el usuario.', 'CANCELLED'));
+        } else if (!msg || msg === 'null' || msg === 'undefined' || msg.indexOf('connection') !== -1) {
+          reject(new AutofirmaError(
+            'AutoFirma no respondió. Asegúrate de que AutoFirma está abierto e introduce tu PIN cuando aparezca la ventana.',
+            'CONNECTION_ERROR'
+          ));
         } else {
           reject(new AutofirmaError(msg, 'API_ERROR'));
         }
@@ -87,9 +117,14 @@ async function cofirmarConAutofirma(pdfBytes, opciones) {
       },
       function(errorType, errorMessage) {
         clearTimeout(timer);
-        var msg = errorMessage || errorType || 'Error desconocido';
-        if (String(errorType).indexOf('Cancel') !== -1) {
+        var msg = errorMessage || errorType || '';
+        if (String(errorType).indexOf('Cancel') !== -1 || String(msg).indexOf('Cancel') !== -1) {
           reject(new AutofirmaError('Firma cancelada por el usuario.', 'CANCELLED'));
+        } else if (!msg || msg === 'null' || msg === 'undefined' || msg.indexOf('connection') !== -1) {
+          reject(new AutofirmaError(
+            'AutoFirma no respondió. Asegúrate de que AutoFirma está abierto e introduce tu PIN cuando aparezca la ventana.',
+            'CONNECTION_ERROR'
+          ));
         } else {
           reject(new AutofirmaError(msg, 'API_ERROR'));
         }

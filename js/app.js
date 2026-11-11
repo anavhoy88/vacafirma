@@ -129,6 +129,11 @@ async function handleLogout() {
   await logout();
   state = { session: null, user: null, profile: null, permisos: [], permisoActual: null, pdfBytes: null };
   actualizarHeaderAuth();
+  // Restaurar botones del panel de login por si quedaron deshabilitados
+  const btnLP = $('btnLoginPassword');
+  if (btnLP) { btnLP.disabled = false; btnLP.textContent = 'Entrar con contraseña'; }
+  const btnML = $('btnSendMagicLink');
+  if (btnML) { btnML.disabled = false; btnML.textContent = 'Enviar enlace mágico'; }
   mostrarPanel('panelLogin');
 }
 
@@ -381,6 +386,8 @@ async function handleFirmarYEnviar() {
     ocultarModalAutofirma();
     if (err.code === 'CANCELLED') {
       toast('Firma cancelada. La solicitud se ha guardado como borrador.', 'warning');
+    } else if (err.code === 'CONNECTION_ERROR') {
+      toast('⚠️ AutoFirma no responde. Abre AutoFirma manualmente y vuelve a pulsar "Firmar y enviar".', 'error', 8000);
     } else {
       toast('Error: ' + err.message, 'error');
     }
