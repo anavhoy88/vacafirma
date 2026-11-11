@@ -205,10 +205,10 @@ async function crearPermiso(datos) {
 }
 
 async function getMisPermisos(userId) {
+  // Sin orderBy para evitar índice compuesto — ordenamos en memoria
   const q = query(
     collection(_db, 'permisos'),
-    where('empleado_id', '==', userId),
-    orderBy('created_at', 'desc')
+    where('empleado_id', '==', userId)
   );
   const snap = await getDocs(q);
   const permisos = await Promise.all(snap.docs.map(async d => {
@@ -218,14 +218,16 @@ async function getMisPermisos(userId) {
     permiso.firmas = firmasSnap.docs.map(f => ({ id: f.id, ...f.data() }));
     return permiso;
   }));
+  // Ordenar por fecha desc en memoria
+  permisos.sort((a, b) => (b.created_at?.seconds || 0) - (a.created_at?.seconds || 0));
   return permisos;
 }
 
 async function getPermisosParaJefeSeccion(jefeId) {
+  // Sin orderBy para evitar índice compuesto — ordenamos en memoria
   const q = query(
     collection(_db, 'permisos'),
-    where('jefe_seccion_id', '==', jefeId),
-    orderBy('created_at', 'desc')
+    where('jefe_seccion_id', '==', jefeId)
   );
   const snap = await getDocs(q);
   const estados = ['firmada_empleado','aprobada_jefe_seccion','rechazada_jefe_seccion','aprobada','rechazada'];
@@ -239,6 +241,7 @@ async function getPermisosParaJefeSeccion(jefeId) {
         return permiso;
       })
   );
+  permisos.sort((a, b) => (b.created_at?.seconds || 0) - (a.created_at?.seconds || 0));
   return await _enriquecerConPerfiles(permisos);
 }
 
@@ -377,8 +380,14 @@ async function getFirmasDePermiso(permisoId) {
 // ══════════════════════════════════════════════════════════════
 
 async function subirPDF(userId, permisoId, pdfBytes, sufijo = '') {
-  // Convertir Uint8Array → base64
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(pdfBytes)));
+  // Convertir Uint8Array → base64 (en trozos para evitar stack overflow en PDFs grandes)
+  const bytes = new Uint8Array(pdfBytes);
+  let binary = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  const base64 = btoa(binary);
   const campo  = sufijo === 'final' ? 'pdf_b64_final' : 'pdf_b64';
   await updateDoc(doc(_db, 'permisos', permisoId), {
     [campo]: base64,

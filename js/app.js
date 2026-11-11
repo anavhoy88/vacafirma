@@ -128,8 +128,8 @@ async function handleLoginPassword() {
 async function handleLogout() {
   await logout();
   state = { session: null, user: null, profile: null, permisos: [], permisoActual: null, pdfBytes: null };
-  mostrarPanel('panelLogin');
   actualizarHeaderAuth();
+  mostrarPanel('panelLogin');
 }
 
 // ── Header auth ───────────────────────────────────────────────
