@@ -344,15 +344,9 @@ async function handleFirmarYEnviar() {
     });
     ocultarModalAutofirma();
 
-    // 5. Subir PDF firmado a Storage
-    btn.textContent = 'Subiendo PDF…';
-    const pdfPath = await subirPDF(state.user.id, permiso.id, pdfFirmado, 'empleado');
-
-    // 6. Actualizar estado en BD
-    await actualizarTrasFirmaEmpleado(permiso.id, pdfPath);
-
-    // 7. Registrar firma criptográfica
-    await registrarFirma({
+    // 5. Registrar firma criptográfica en Firestore
+    btn.textContent = 'Registrando firma…';
+    const firmaDoc = await registrarFirma({
       permiso_id:  permiso.id,
       firmante_id: state.user.id,
       rol_firma:   'empleado',
@@ -360,7 +354,23 @@ async function handleFirmarYEnviar() {
       accion:      'aprobado',
     });
 
-    // 8. Notificar al jefe de sección por email
+    // 6. Regenerar PDF con la firma visible en la tabla de firmas
+    btn.textContent = 'Generando PDF firmado…';
+    const permisoConFirma = {
+      ...pdfPermiso,
+      estado: 'firmada_empleado',
+      firmas: [{ ...firmaDoc, firmante: state.profile }],
+    };
+    const pdfConFirma = await generarPDFPermiso(permisoConFirma, permisoConFirma.firmas);
+
+    // 7. Subir PDF con firma visible a Firestore
+    btn.textContent = 'Subiendo PDF…';
+    const pdfPath = await subirPDF(state.user.id, permiso.id, pdfConFirma, 'empleado');
+
+    // 8. Actualizar estado en BD
+    await actualizarTrasFirmaEmpleado(permiso.id, pdfPath);
+
+    // 9. Notificar al jefe de sección por email
     notificarJefe(emailJefe, state.profile.nombre_completo, permiso, 'seccion');
 
     toast('Solicitud enviada y firmada correctamente.', 'success');
@@ -487,7 +497,7 @@ async function handleAprobar() {
     const rutaPDF  = permiso.pdf_url;
     const pdfBytes = await descargarPDF(rutaPDF);
 
-    // Cofirmar
+    // Cofirmar (AutoFirma añade firma criptográfica al PDF)
     mostrarModalAutofirma();
     const { pdfFirmado, certInfo } = await cofirmarConAutofirma(pdfBytes, {
       rol:       rolFirma,
@@ -495,30 +505,42 @@ async function handleAprobar() {
     });
     ocultarModalAutofirma();
 
-    // Subir PDF cofirmado
-    const sufijo  = rolFirma === 'jefe_grupo' ? 'final' : 'jefe_sec';
-    const pdfPath = await subirPDF(state.user.id, permiso.id, pdfFirmado, sufijo);
-
-    // Actualizar estado
-    if (rolFirma === 'jefe_seccion') {
-      await aprobarJefeSeccion(permiso.id, pdfPath);
-      // Notificar al jefe de grupo
-      const jefeGrupo = await getJefeGrupo();
-      if (jefeGrupo) notificarJefe(jefeGrupo.email, state.profile.nombre_completo, permiso, 'grupo');
-    } else {
-      await aprobarJefeGrupo(permiso.id, pdfPath);
-      // Notificar al empleado que ha sido aprobado
-      notificarAprobado(permiso);
-    }
-
-    // Registrar firma
-    await registrarFirma({
+    // Registrar firma en Firestore primero
+    btn.textContent = 'Registrando firma…';
+    const firmaDoc = await registrarFirma({
       permiso_id:  permiso.id,
       firmante_id: state.user.id,
       rol_firma:   rolFirma,
       certInfo,
       accion:      'aprobado',
     });
+
+    // Regenerar PDF con TODAS las firmas visibles en la tabla
+    btn.textContent = 'Generando PDF firmado…';
+    const todasFirmas = await getFirmasDePermiso(permiso.id);
+    const estadoNuevo = rolFirma === 'jefe_grupo' ? 'aprobada' : 'aprobada_jefe_seccion';
+    const permisoActualizado = {
+      ...permiso,
+      empleado: permiso.empleado || state.profile,
+      estado:   estadoNuevo,
+      firmas:   todasFirmas,
+    };
+    const pdfConFirmas = await generarPDFPermiso(permisoActualizado, todasFirmas);
+
+    // Subir PDF con firmas visibles
+    btn.textContent = 'Subiendo PDF…';
+    const sufijo  = rolFirma === 'jefe_grupo' ? 'final' : 'jefe_sec';
+    const pdfPath = await subirPDF(state.user.id, permiso.id, pdfConFirmas, sufijo);
+
+    // Actualizar estado
+    if (rolFirma === 'jefe_seccion') {
+      await aprobarJefeSeccion(permiso.id, pdfPath);
+      const jefeGrupo = await getJefeGrupo();
+      if (jefeGrupo) notificarJefe(jefeGrupo.email, state.profile.nombre_completo, permiso, 'grupo');
+    } else {
+      await aprobarJefeGrupo(permiso.id, pdfPath);
+      notificarAprobado(permiso);
+    }
 
     toast('Solicitud aprobada y firmada.', 'success');
     mostrarPanel('panelDashboard');
@@ -618,18 +640,36 @@ async function descargarPDFPermiso(permisoId) {
 
 function notificarJefe(emailJefe, nombreEmpleado, permiso, etapa) {
   if (!emailJefe) return;
-  const esPrimero = etapa === 'seccion';
+  const rolLabel = etapa === 'seccion' ? 'Jefe de Sección' : 'Jefe de Grupo';
+  const appUrl   = window.location.origin + window.location.pathname;
   const asunto = encodeURIComponent(
-    `[VacaFirma] Solicitud de ${nombreEmpleado} pendiente de tu firma`
+    `[VacaFirma] ACCIÓN REQUERIDA — Solicitud de permiso de ${nombreEmpleado}`
   );
   const cuerpo = encodeURIComponent(
-    `Hola,\n\n${nombreEmpleado} ha enviado una solicitud de permiso que necesita tu aprobación.\n\n` +
-    `Tipo: ${TIPO_LABELS[permiso.tipo] || permiso.tipo}\n` +
-    `Período: ${formatFecha(permiso.fecha_inicio)} → ${formatFecha(permiso.fecha_fin)}\n\n` +
-    `Accede a VacaFirma para revisarla y firmarla:\n${window.location.origin}\n\n` +
-    `Referencia: ${permiso.id}\n`
+    `Estimado/a ${rolLabel},\n\n` +
+    `${nombreEmpleado} ha firmado electrónicamente una solicitud de permiso que requiere tu aprobación.\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Tipo:    ${TIPO_LABELS[permiso.tipo] || permiso.tipo}\n` +
+    `Inicio:  ${formatFecha(permiso.fecha_inicio)}\n` +
+    `Fin:     ${formatFecha(permiso.fecha_fin)}\n` +
+    `Días:    ${permiso.dias_habiles || '—'}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `Para revisar, aprobar o rechazar la solicitud, accede a VacaFirma:\n` +
+    `${appUrl}\n\n` +
+    `Una vez dentro, busca la solicitud con referencia: ${permiso.id}\n\n` +
+    `Si no tienes cuenta en VacaFirma, responde a este correo para que el empleado te facilite el acceso.\n\n` +
+    `── Mensaje automático de VacaFirma ──`
   );
-  window.open(`mailto:${emailJefe}?subject=${asunto}&body=${cuerpo}`, '_blank');
+  // Intentar abrir cliente de correo
+  const mailtoLink = `mailto:${emailJefe}?subject=${asunto}&body=${cuerpo}`;
+  const a = document.createElement('a');
+  a.href = mailtoLink;
+  a.target = '_blank';
+  a.click();
+  // Toast informativo para el empleado
+  setTimeout(() => {
+    toast(`📧 Se ha abierto tu cliente de correo para notificar a ${emailJefe}. Si no se abrió, copia el correo manualmente.`, 'info', 7000);
+  }, 500);
 }
 
 function notificarAprobado(permiso) {
@@ -677,14 +717,14 @@ function ocultarModalAutofirma() {
 // TOAST
 // ══════════════════════════════════════════════════════════════
 
-function toast(msg, tipo = 'info') {
+function toast(msg, tipo = 'info', duracion = 5000) {
   const container = $('toastContainer');
   if (!container) { console.log('[Toast]', msg); return; }
   const t = document.createElement('div');
   t.className = `toast toast-${tipo}`;
   t.innerHTML = `<span>${msg}</span><button onclick="this.parentElement.remove()">×</button>`;
   container.appendChild(t);
-  setTimeout(() => t.remove(), 5000);
+  setTimeout(() => t.remove(), duracion);
 }
 
 // ══════════════════════════════════════════════════════════════
