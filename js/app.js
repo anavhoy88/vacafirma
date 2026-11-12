@@ -44,6 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         await cargarDashboard();
         mostrarPanel('panelDashboard');
+        // Si el usuario solo tiene magic link (sin contraseña), ofrecer establecerla
+        const proveedores = session.user.app_metadata?.providers || session.user.identities?.map(i => i.provider) || [];
+        const soloMagicLink = !proveedores.includes('email') && (proveedores.includes('magiclink') || proveedores.length === 0 || (session.user.identities?.length > 0 && !session.user.identities.some(i => i.identity_data?.password)));
+        // Detección más robusta: si no tiene proveedor 'email' (password) en sus identities
+        const tienePassword = session.user.identities?.some(i => i.provider === 'email') ?? false;
+        if (!tienePassword && $('modalContrasena')) {
+          $('modalContrasena').classList.remove('hidden');
+        }
       }
     } else {
       mostrarPanel('panelLogin');
@@ -104,6 +112,40 @@ function bindEvents() {
   $('btnCancelarRechazo')  && $('btnCancelarRechazo').addEventListener('click', toggleRechazar);
   $('btnDescargarPDF')   && $('btnDescargarPDF').addEventListener('click', handleDescargarPDF);
   $('btnDescargarPDF2')  && $('btnDescargarPDF2').addEventListener('click', handleDescargarPDF);
+
+  // Modal contraseña
+  $('btnGuardarContrasena')    && $('btnGuardarContrasena').addEventListener('click', handleGuardarContrasena);
+  $('btnCerrarModalContrasena') && $('btnCerrarModalContrasena').addEventListener('click', () => {
+    $('modalContrasena').classList.add('hidden');
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// CONTRASEÑA — Añadir contraseña a cuenta magic link
+// ══════════════════════════════════════════════════════════════
+
+async function handleGuardarContrasena() {
+  const pwd1 = $('nuevaContrasena') ? $('nuevaContrasena').value : '';
+  const pwd2 = $('nuevaContrasenaConfirm') ? $('nuevaContrasenaConfirm').value : '';
+  if (!pwd1 || pwd1.length < 6) {
+    toast('La contraseña debe tener al menos 6 caracteres.', 'error');
+    return;
+  }
+  if (pwd1 !== pwd2) {
+    toast('Las contraseñas no coinciden.', 'error');
+    return;
+  }
+  const btn = $('btnGuardarContrasena');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try {
+    await establecerContrasena(pwd1);
+    $('modalContrasena').classList.add('hidden');
+    toast('✓ Contraseña establecida. Ya puedes acceder con email y contraseña.', 'success');
+  } catch (err) {
+    toast('Error al guardar la contraseña: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar contraseña'; }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -851,6 +893,10 @@ window.vacaAdmin = {
     state.profile.rol = nuevoRol;
     console.log(`✓ Rol cambiado a "${nuevoRol}" para ${state.user.email}`);
     console.log('Recarga la página para que surta efecto.');
+  },
+  async setRolEmail(email, nuevoRol) {
+    const res = await setRolPorEmail(email, nuevoRol);
+    console.log(`✓ Rol cambiado a "${nuevoRol}" para ${email} (id: ${res.id})`);
   },
   async reasignarJefe(emailJefe) {
     const res = await reasignarJefeSecciones(emailJefe);

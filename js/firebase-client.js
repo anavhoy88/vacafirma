@@ -12,6 +12,10 @@ import {
   isSignInWithEmailLink,
   signInWithEmailLink,
   signInWithEmailAndPassword,
+  EmailAuthProvider,
+  linkWithCredential,
+  updatePassword,
+  reauthenticateWithCredential,
   signOut,
   onAuthStateChanged,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
@@ -503,6 +507,45 @@ async function descargarPDF(path) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// CONTRASEÑA — establecer / cambiar desde dentro de la sesión
+// ══════════════════════════════════════════════════════════════
+
+/** Devuelve true si el usuario actual NO tiene contraseña (solo magic link) */
+function usuarioSinContrasena() {
+  const user = _auth.currentUser;
+  if (!user) return false;
+  return !user.providerData.some(p => p.providerId === 'password');
+}
+
+/**
+ * Vincula contraseña a una cuenta que solo tiene magic link.
+ * Llama a linkWithCredential; si ya tiene contraseña, hace updatePassword.
+ */
+async function establecerContrasena(nuevaContrasena) {
+  const user = _auth.currentUser;
+  if (!user) throw new Error('No hay sesión activa.');
+  const credential = EmailAuthProvider.credential(user.email, nuevaContrasena);
+  // Intentar vincular (si ya tiene password, linkWithCredential falla → updatePassword)
+  try {
+    await linkWithCredential(user, credential);
+  } catch (err) {
+    if (err.code === 'auth/provider-already-linked' || err.code === 'auth/email-already-in-use') {
+      await updatePassword(user, nuevaContrasena);
+    } else {
+      throw err;
+    }
+  }
+}
+
+// Admin: cambiar rol a cualquier usuario por email
+async function setRolPorEmail(email, nuevoRol) {
+  const usuario = await buscarUsuarioPorEmail(email);
+  if (!usuario) throw new Error('No se encontró usuario con email: ' + email);
+  await updateDoc(doc(_db, 'user_profiles', usuario.id), { rol: nuevoRol });
+  return { id: usuario.id, email, nuevoRol };
+}
+
+// ══════════════════════════════════════════════════════════════
 // EXPONER FUNCIONES COMO GLOBALES
 // (app.js se carga como script clásico y las llama directamente)
 // ══════════════════════════════════════════════════════════════
@@ -539,5 +582,7 @@ Object.assign(window, {
   // Admin
   eliminarPermiso,
   setRolUsuario,
+  setRolPorEmail,
   reasignarJefeSecciones,
+  establecerContrasena,
 });
