@@ -214,6 +214,7 @@ state.tabActivo = 'mis';
 async function cargarDashboard() {
   actualizarHeaderAuth();
   const rol = state.profile ? state.profile.rol : 'empleado';
+  console.log('[Dashboard] rol detectado:', rol, '| perfil:', state.profile);
 
   // Badge de rol
   const badge = $('userRoleBadge');

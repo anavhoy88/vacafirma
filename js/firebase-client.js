@@ -260,6 +260,8 @@ async function getPermisosParaJefeGrupo() {
   const resultados = await Promise.all(estados.map(estado =>
     getDocs(query(collection(_db, 'permisos'), where('estado', '==', estado)))
   ));
+  console.log('[JefeGrupo] Resultados por estado:',
+    estados.map((e, i) => `${e}: ${resultados[i].size} docs`).join(', '));
   const permisos = await Promise.all(
     resultados.flatMap(snap => snap.docs).map(async d => {
       const permiso = { id: d.id, ...d.data() };
@@ -268,6 +270,7 @@ async function getPermisosParaJefeGrupo() {
       return permiso;
     })
   );
+  console.log('[JefeGrupo] Total permisos cargados:', permisos.length);
   // Ordenar por fecha desc
   permisos.sort((a, b) => {
     const ta = a.created_at?.seconds || 0;
