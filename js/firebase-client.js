@@ -123,10 +123,31 @@ function onAuthStateChange(callback) {
 // USER PROFILES
 // ══════════════════════════════════════════════════════════════
 
+// Mapeo de valores históricos de rol → valor canónico interno
+const _ROL_CANON = {
+  'empleado':        'empleado',
+  'Empleado':        'empleado',
+  'jefe_seccion':    'jefe_seccion',
+  'Jefe de Sección': 'jefe_seccion',
+  'Jefe de Seccion': 'jefe_seccion',
+  'jefe intermedio': 'jefe_seccion',
+  'Jefe Intermedio': 'jefe_seccion',
+  'jefe_grupo':      'jefe_grupo',
+  'Jefe de FFAA':    'jefe_grupo',
+  'Jefe de Grupo':   'jefe_grupo',
+  'jefe de grupo':   'jefe_grupo',
+};
+
+function _normalizarRol(rol) {
+  return _ROL_CANON[rol] || rol || 'empleado';
+}
+
 async function getUserProfile(userId) {
   const snap = await getDoc(doc(_db, 'user_profiles', userId));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() };
+  const data = snap.data();
+  // Normalizar rol al leer para que el código siempre vea 'empleado'|'jefe_seccion'|'jefe_grupo'
+  return { id: snap.id, ...data, rol: _normalizarRol(data.rol) };
 }
 
 async function createOrUpdateProfile(profile) {
@@ -138,15 +159,22 @@ async function createOrUpdateProfile(profile) {
 }
 
 async function getJefeGrupo() {
-  const q = query(
-    collection(_db, 'user_profiles'),
-    where('rol', '==', 'jefe_grupo'),
-    where('activo', '==', true)
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  const d = snap.docs[0];
-  return { id: d.id, ...d.data() };
+  // Buscar por todos los valores posibles del rol (normalizados o históricos)
+  const valoresRol = ['jefe_grupo', 'Jefe de FFAA', 'Jefe de Grupo', 'jefe de grupo'];
+  for (const valor of valoresRol) {
+    const q = query(
+      collection(_db, 'user_profiles'),
+      where('rol', '==', valor),
+      where('activo', '==', true)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const d = snap.docs[0];
+      const data = d.data();
+      return { id: d.id, ...data, rol: 'jefe_grupo' };
+    }
+  }
+  return null;
 }
 
 async function buscarUsuarioPorEmail(email) {
@@ -157,7 +185,8 @@ async function buscarUsuarioPorEmail(email) {
   const snap = await getDocs(q);
   if (snap.empty) return null;
   const d = snap.docs[0];
-  return { id: d.id, ...d.data() };
+  const data = d.data();
+  return { id: d.id, ...data, rol: _normalizarRol(data.rol) };
 }
 
 // Helper: enriquece permisos con perfiles de empleado y jefe_sec
@@ -171,7 +200,10 @@ async function _enriquecerConPerfiles(permisos) {
   const perfiles = {};
   await Promise.all(ids.map(async id => {
     const snap = await getDoc(doc(_db, 'user_profiles', id));
-    if (snap.exists()) perfiles[id] = { id: snap.id, ...snap.data() };
+    if (snap.exists()) {
+      const d = snap.data();
+      perfiles[id] = { id: snap.id, ...d, rol: _normalizarRol(d.rol) };
+    }
   }));
   return permisos.map(p => ({
     ...p,
