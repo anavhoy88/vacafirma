@@ -116,10 +116,21 @@
     <section class="panel hidden" id="panelDashboard">
       <div class="dashboard-header">
         <div>
-          <h2 class="section-title">Mis solicitudes</h2>
+          <h2 class="section-title" id="dashboardTitulo">Mis solicitudes</h2>
           <p class="section-sub" id="userRoleBadge"></p>
         </div>
         <button class="btn-primary" id="btnNuevoPermiso">+ Nueva solicitud</button>
+      </div>
+
+      <!-- Pestañas para jefe de sección (ocultas para otros roles) -->
+      <div class="dash-tabs hidden" id="dashTabs">
+        <button class="dash-tab active" id="tabMisSolicitudes" onclick="cambiarTab('mis')">
+          Mis solicitudes
+        </button>
+        <button class="dash-tab" id="tabPendientesFirma" onclick="cambiarTab('pendientes')">
+          Pendientes de mi firma
+          <span class="tab-badge" id="tabBadgeCount"></span>
+        </button>
       </div>
 
       <div class="table-wrapper">

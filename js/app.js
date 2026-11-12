@@ -192,6 +192,9 @@ async function handleGuardarPerfil() {
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════
 
+// Tab activo para jefe_seccion: 'mis' | 'pendientes'
+state.tabActivo = 'mis';
+
 async function cargarDashboard() {
   actualizarHeaderAuth();
   const rol = state.profile ? state.profile.rol : 'empleado';
@@ -199,26 +202,60 @@ async function cargarDashboard() {
   // Badge de rol
   const badge = $('userRoleBadge');
   if (badge) {
-    const rolTexto = { empleado: 'Empleado', jefe_seccion: 'Jefe de Sección', jefe_grupo: 'Jefe de Grupo' };
+    const rolTexto = { empleado: 'Empleado', jefe_seccion: 'Jefe Intermedio', jefe_grupo: 'Jefe de FFAA' };
     badge.textContent = rolTexto[rol] || rol;
   }
 
-  // Mostrar botón nueva solicitud solo para empleados
+  // Botón nueva solicitud: visible para empleados Y jefes de sección
   const btnNuevo = $('btnNuevoPermiso');
-  if (btnNuevo) btnNuevo.style.display = rol === 'empleado' ? '' : 'none';
+  if (btnNuevo) btnNuevo.style.display = (rol === 'empleado' || rol === 'jefe_seccion') ? '' : 'none';
+
+  // Pestañas: solo para jefe_seccion
+  const tabs = $('dashTabs');
+  if (tabs) tabs.classList.toggle('hidden', rol !== 'jefe_seccion');
 
   try {
     if (rol === 'empleado') {
-      state.permisos = await getMisPermisos(state.user.id);
+      state.permisos        = await getMisPermisos(state.user.id);
+      state.permisosPropios = null;
+      state.permisosPendientes = null;
     } else if (rol === 'jefe_seccion') {
-      state.permisos = await getPermisosParaJefeSeccion(state.user.id);
+      // Cargar ambas listas en paralelo
+      const [propios, pendientes] = await Promise.all([
+        getMisPermisos(state.user.id),
+        getPermisosParaJefeSeccion(state.user.id),
+      ]);
+      state.permisosPropios    = propios;
+      state.permisosPendientes = pendientes;
+      // Actualizar badge de pendientes
+      const badgeCount = $('tabBadgeCount');
+      if (badgeCount) badgeCount.textContent = pendientes.length > 0 ? pendientes.length : '';
+      // Mostrar tab activo
+      state.permisos = state.tabActivo === 'pendientes' ? pendientes : propios;
     } else if (rol === 'jefe_grupo') {
-      state.permisos = await getPermisosParaJefeGrupo();
+      state.permisos        = await getPermisosParaJefeGrupo();
+      state.permisosPropios = null;
+      state.permisosPendientes = null;
     }
     renderTabla();
   } catch (err) {
     toast('Error al cargar solicitudes: ' + err.message, 'error');
   }
+}
+
+function cambiarTab(tab) {
+  state.tabActivo = tab;
+  state.permisos  = tab === 'pendientes' ? state.permisosPendientes : state.permisosPropios;
+  // Estilos de pestañas
+  $('tabMisSolicitudes') .classList.toggle('active', tab === 'mis');
+  $('tabPendientesFirma').classList.toggle('active', tab === 'pendientes');
+  // Título del panel
+  const titulo = $('dashboardTitulo');
+  if (titulo) titulo.textContent = tab === 'pendientes' ? 'Pendientes de mi firma' : 'Mis solicitudes';
+  // Botón nueva solicitud: solo visible en "mis solicitudes"
+  const btnNuevo = $('btnNuevoPermiso');
+  if (btnNuevo) btnNuevo.style.display = tab === 'pendientes' ? 'none' : '';
+  renderTabla();
 }
 
 function renderTabla() {
@@ -766,6 +803,9 @@ function formatFechaHora(isoStr) {
 // Uso: await vacaAdmin.setRol('jefe_seccion')
 //      await vacaAdmin.reasignarJefe('email@ejemplo.es')
 // ══════════════════════════════════════════════════════════════
+
+// Exponer cambiarTab globalmente (usado en onclick del HTML)
+window.cambiarTab = cambiarTab;
 
 window.vacaAdmin = {
   async setRol(nuevoRol) {

@@ -27,7 +27,6 @@ import {
   collection,
   query,
   where,
-  orderBy,
   serverTimestamp,
   Timestamp,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
@@ -250,8 +249,9 @@ async function getPermisosParaJefeSeccion(jefeId) {
 async function getPermisosParaJefeGrupo() {
   const estados = ['aprobada_jefe_seccion', 'aprobada', 'rechazada'];
   // Firestore no permite OR en where, hacemos 3 queries
+  // Sin orderBy para evitar índice compuesto — ordenamos en memoria después
   const resultados = await Promise.all(estados.map(estado =>
-    getDocs(query(collection(_db, 'permisos'), where('estado', '==', estado), orderBy('created_at', 'desc')))
+    getDocs(query(collection(_db, 'permisos'), where('estado', '==', estado)))
   ));
   const permisos = await Promise.all(
     resultados.flatMap(snap => snap.docs).map(async d => {
