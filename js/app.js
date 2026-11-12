@@ -93,6 +93,10 @@ function bindEvents() {
   // Dashboard
   $('btnNuevoPermiso')   && $('btnNuevoPermiso').addEventListener('click', () => {
     resetFormulario();
+    // Si el peticionario es jefe_seccion, ocultar campo email del jefe
+    const rol = state.profile?.rol || 'empleado';
+    const wrapJefe = $('emailJefeWrap');
+    if (wrapJefe) wrapJefe.style.display = rol === 'jefe_seccion' ? 'none' : '';
     mostrarPanel('panelFormulario');
   });
 
@@ -402,7 +406,15 @@ async function handleFirmarYEnviar() {
   const telefono   = $('telefono').value.trim();
   const motivo     = $('motivo')   ? $('motivo').value.trim()   : '';
   const observ     = $('observaciones') ? $('observaciones').value.trim() : '';
-  const emailJefe  = $('emailJefe').value.trim();
+  const rolPeticionario = state.profile?.rol || 'empleado';
+  let emailJefe = $('emailJefe') ? $('emailJefe').value.trim() : '';
+
+  // Si el peticionario es jefe_seccion, su superior es siempre el jefe_grupo
+  if (rolPeticionario === 'jefe_seccion') {
+    const jefeGrupo = await getJefeGrupo();
+    if (!jefeGrupo) { toast('No se encontró el jefe de grupo en el sistema.', 'error'); return; }
+    emailJefe = jefeGrupo.email;
+  }
 
   if (!tipo)       { toast('Selecciona el tipo de permiso.', 'error'); return; }
   if (!fechaIni)   { toast('Indica la fecha de inicio.',    'error'); return; }
