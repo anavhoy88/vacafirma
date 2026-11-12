@@ -18,6 +18,30 @@ const COL = {
   amarillo:  [0.6, 0.4, 0.0],
 };
 
+// Convierte caracteres especiales del español a ASCII compatible con WinAnsi/Helvetica
+function sanitizePDF(str) {
+  if (!str) return str;
+  return String(str)
+    .replace(/À/g,'A').replace(/Á/g,'A').replace(/Â/g,'A').replace(/Ã/g,'A').replace(/Ä/g,'A').replace(/Å/g,'A')
+    .replace(/à/g,'a').replace(/á/g,'a').replace(/â/g,'a').replace(/ã/g,'a').replace(/ä/g,'a').replace(/å/g,'a')
+    .replace(/È/g,'E').replace(/É/g,'E').replace(/Ê/g,'E').replace(/Ë/g,'E')
+    .replace(/è/g,'e').replace(/é/g,'e').replace(/ê/g,'e').replace(/ë/g,'e')
+    .replace(/Ì/g,'I').replace(/Í/g,'I').replace(/Î/g,'I').replace(/Ï/g,'I')
+    .replace(/ì/g,'i').replace(/í/g,'i').replace(/î/g,'i').replace(/ï/g,'i')
+    .replace(/Ò/g,'O').replace(/Ó/g,'O').replace(/Ô/g,'O').replace(/Õ/g,'O').replace(/Ö/g,'O')
+    .replace(/ò/g,'o').replace(/ó/g,'o').replace(/ô/g,'o').replace(/õ/g,'o').replace(/ö/g,'o')
+    .replace(/Ù/g,'U').replace(/Ú/g,'U').replace(/Û/g,'U').replace(/Ü/g,'U')
+    .replace(/ù/g,'u').replace(/ú/g,'u').replace(/û/g,'u').replace(/ü/g,'u')
+    .replace(/Ñ/g,'N').replace(/ñ/g,'n')
+    .replace(/Ç/g,'C').replace(/ç/g,'c')
+    .replace(/ª/g,'a').replace(/º/g,'o')
+    .replace(/·/g,'-').replace(/•/g,'-')
+    .replace(/—/g,'-').replace(/–/g,'-')
+    .replace(/"/g,'"').replace(/"/g,'"').replace(/'/g,"'").replace(/'/g,"'")
+    .replace(/…/g,'...').replace(/✓/g,'[OK]').replace(/✗/g,'[X]').replace(/✘/g,'[X]')
+    .replace(/[^\x00-\xFF]/g,'?');
+}
+
 async function generarPDFPermiso(permiso, firmas = []) {
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
@@ -37,14 +61,14 @@ async function generarPDFPermiso(permiso, firmas = []) {
 
   function txt(text, x, y, { size = 8, font = fontReg, color = COL.negro, maxWidth } = {}) {
     if (!text) return;
-    const s = String(text);
+    const s = sanitizePDF(String(text));
     let display = s;
     if (maxWidth && font.widthOfTextAtSize(s, size) > maxWidth) {
       let t = s;
-      while (t.length > 1 && font.widthOfTextAtSize(t + '…', size) > maxWidth) {
+      while (t.length > 1 && font.widthOfTextAtSize(t + '...', size) > maxWidth) {
         t = t.slice(0, -1);
       }
-      display = t + '…';
+      display = t + '...';
     }
     page.drawText(display, { x, y, size, font, color: rgb3(color) });
   }
@@ -226,11 +250,11 @@ async function generarPDFPermiso(permiso, firmas = []) {
           FC.fecha  + 3, fY, { size: 7 });
 
       const accionColor = firma.accion === 'aprobado' ? COL.verde : COL.rojo;
-      const accionTxt   = firma.accion === 'aprobado' ? '✓ APROBADO' : '✗ RECHAZADO';
+      const accionTxt   = firma.accion === 'aprobado' ? '[OK] APROBADO' : '[X] RECHAZADO';
       txt(accionTxt, FC.accion + 3, fY, { size: 8, font: fontBold, color: accionColor });
 
       if (firma.cert_hash) {
-        txt('Cert: ' + firma.cert_hash.substring(0, 24) + '…',
+        txt('Cert: ' + firma.cert_hash.substring(0, 24) + '...',
             FC.nombre + 3, fY - 10, { size: 6, color: COL.gris });
       }
     } else {
