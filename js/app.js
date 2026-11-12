@@ -599,18 +599,30 @@ function renderDetalle(permiso) {
 
   // Sección firma: solo para jefes, y solo si el estado corresponde
   if (seccionFirma) {
-    const puedeAprobar =
-      (rol === 'jefe_seccion' && permiso.estado === 'firmada_empleado') ||
-      (rol === 'jefe_grupo'   && permiso.estado === 'aprobada_jefe_seccion');
+    // El jefe_seccion designado en este permiso puede actuar como nivel final
+    // si el permiso ya pasó por el nivel empleado (estado aprobada_jefe_seccion)
+    // y él es el jefe_seccion_id — eso ocurre cuando el peticionario ES jefe_seccion
+    // y puso al Comandante como su jefe de grupo.
+    const esJefeDesignadoEnPermiso = permiso.jefe_seccion_id === state.user?.id;
 
+    const puedeAprobarComoSeccion =
+      rol === 'jefe_seccion' && permiso.estado === 'firmada_empleado';
+    const puedeAprobarComoGrupo =
+      rol === 'jefe_grupo' && permiso.estado === 'aprobada_jefe_seccion';
+    // Caso especial: jefe_seccion designado en el permiso actúa como firma final
+    const puedeAprobarComoFinal =
+      rol === 'jefe_seccion' && permiso.estado === 'aprobada_jefe_seccion' && esJefeDesignadoEnPermiso;
+
+    const puedeAprobar = puedeAprobarComoSeccion || puedeAprobarComoGrupo || puedeAprobarComoFinal;
     seccionFirma.style.display = puedeAprobar ? '' : 'none';
 
-    const rolFirma = rol === 'jefe_grupo' ? 'jefe_grupo' : 'jefe_seccion';
+    // Determinar qué rol de firma usar en Firestore
+    const rolFirma = (puedeAprobarComoGrupo || puedeAprobarComoFinal) ? 'jefe_grupo' : 'jefe_seccion';
     const btnAprobar = $('btnAprobar');
     if (btnAprobar) {
       btnAprobar.dataset.rolFirma = rolFirma;
-      // Si es Comandante y firma el jefe_seccion, es la firma final → texto más claro
-      if (rolFirma === 'jefe_seccion' && permiso.num_firmas === 2) {
+      const esFirmaFinal = rolFirma === 'jefe_grupo' || (rolFirma === 'jefe_seccion' && permiso.num_firmas === 2);
+      if (esFirmaFinal) {
         btnAprobar.innerHTML = '<span class="sign-icon">✓</span> Aprobar y firmar (firma final)';
       } else {
         btnAprobar.innerHTML = '<span class="sign-icon">✓</span> Aprobar y firmar con AutoFirma';
