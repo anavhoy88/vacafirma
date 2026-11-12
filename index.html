@@ -142,9 +142,7 @@
               <th>Fin</th>
               <th>Tipo</th>
               <th>Estado</th>
-              <th>Firma empleado</th>
-              <th>Firma jefe 1</th>
-              <th>Firma jefe 2</th>
+              <th>Firmas</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -224,10 +222,22 @@
             <textarea id="observaciones" rows="2" placeholder="Cualquier nota adicional…"></textarea>
           </div>
 
-          <!-- Jefe de sección (oculto para jefe_seccion, se autodetecta) -->
-          <div class="input-group" id="emailJefeWrap">
-            <label for="emailJefe">Correo del jefe de sección <span style="color:red">*</span></label>
-            <input type="email" id="emailJefe" placeholder="jefe@organismo.es" />
+          <!-- Cadena de firmantes (en orden) -->
+          <div id="cadenaFirmantesWrap">
+            <label style="display:block;margin-bottom:0.4rem;font-weight:500;">
+              Cadena de firmantes <span style="color:red">*</span>
+              <span style="font-weight:400;font-size:0.82rem;color:var(--muted,#888);margin-left:0.4rem;">
+                — en el orden en que deben firmar
+              </span>
+            </label>
+            <div id="listaFirmantes" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
+            <button type="button" id="btnAnadirFirmante" class="btn-outline"
+              style="margin-top:0.5rem;padding:0.4rem 1rem;font-size:0.85rem;">
+              + Añadir firmante
+            </button>
+            <p style="margin-top:0.3rem;font-size:0.78rem;color:var(--muted,#888);">
+              El primer firmante recibirá la solicitud tras tu firma.
+            </p>
           </div>
         </div>
 

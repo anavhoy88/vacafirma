@@ -93,14 +93,16 @@ function bindEvents() {
   // Dashboard
   $('btnNuevoPermiso')   && $('btnNuevoPermiso').addEventListener('click', async () => {
     resetFormulario();
-    // Si el peticionario es jefe_seccion, precargar el email del jefe_grupo
-    // (editable por si hay relevo de Teniente Coronel)
+    // Si el peticionario es jefe_seccion, precargar el jefe_grupo como único firmante
+    // (el Tcol firmará directamente su solicitud)
     if (state.profile?.rol === 'jefe_seccion') {
       const jefeGrupo = await getJefeGrupo();
-      if (jefeGrupo && $('emailJefe')) {
-        $('emailJefe').value = jefeGrupo.email;
-        const label = $('emailJefeWrap')?.querySelector('label');
-        if (label) label.textContent = 'Correo del jefe de grupo *';
+      if (jefeGrupo) {
+        const lista = $('listaFirmantes');
+        if (lista) {
+          lista.innerHTML = '';
+          anadirFirmante(jefeGrupo.email);
+        }
       }
     }
     mostrarPanel('panelFormulario');
@@ -119,6 +121,9 @@ function bindEvents() {
   $('btnCancelarRechazo')  && $('btnCancelarRechazo').addEventListener('click', toggleRechazar);
   $('btnDescargarPDF')   && $('btnDescargarPDF').addEventListener('click', handleDescargarPDF);
   $('btnDescargarPDF2')  && $('btnDescargarPDF2').addEventListener('click', handleDescargarPDF);
+
+  // Formulario cadena de firmantes
+  $('btnAnadirFirmante') && $('btnAnadirFirmante').addEventListener('click', () => anadirFirmante());
 
   // Modal contraseña
   $('btnGuardarContrasena')    && $('btnGuardarContrasena').addEventListener('click', handleGuardarContrasena);
@@ -272,24 +277,26 @@ async function cargarDashboard() {
     badge.textContent = rolTexto[rol] || rol;
   }
 
-  // Botón nueva solicitud: visible para empleados Y jefes de sección
+  // Botón nueva solicitud: visible para empleados, jefe_seccion y jefe_grupo
+  // (todos pueden crear solicitudes propias)
   const btnNuevo = $('btnNuevoPermiso');
-  if (btnNuevo) btnNuevo.style.display = (rol === 'empleado' || rol === 'jefe_seccion') ? '' : 'none';
+  if (btnNuevo) btnNuevo.style.display = '';
 
-  // Pestañas: solo para jefe_seccion
+  // Pestañas: visible para jefe_seccion y jefe_grupo (tienen solicitudes propias + pendientes)
   const tabs = $('dashTabs');
-  if (tabs) tabs.classList.toggle('hidden', rol !== 'jefe_seccion');
+  if (tabs) tabs.classList.toggle('hidden', rol === 'empleado');
 
   try {
     if (rol === 'empleado') {
       state.permisos        = await getMisPermisos(state.user.id);
       state.permisosPropios = null;
       state.permisosPendientes = null;
-    } else if (rol === 'jefe_seccion') {
-      // Cargar ambas listas en paralelo
+    } else if (rol === 'jefe_seccion' || rol === 'jefe_grupo') {
+      // Ambos roles pueden tener solicitudes propias Y pendientes de firma
+      // Usar getPermisosParaFirmante (cadena dinámica) para las pendientes
       const [propios, pendientes] = await Promise.all([
         getMisPermisos(state.user.id),
-        getPermisosParaJefeSeccion(state.user.id),
+        getPermisosParaFirmante(state.user.id),
       ]);
       state.permisosPropios    = propios;
       state.permisosPendientes = pendientes;
@@ -298,10 +305,6 @@ async function cargarDashboard() {
       if (badgeCount) badgeCount.textContent = pendientes.length > 0 ? pendientes.length : '';
       // Mostrar tab activo
       state.permisos = state.tabActivo === 'pendientes' ? pendientes : propios;
-    } else if (rol === 'jefe_grupo') {
-      state.permisos        = await getPermisosParaJefeGrupo();
-      state.permisosPropios = null;
-      state.permisosPendientes = null;
     }
     renderTabla();
   } catch (err) {
@@ -334,8 +337,9 @@ function renderTabla() {
   }
 
   tbody.innerHTML = state.permisos.map(p => {
-    const emp      = p.empleado || {};
-    const dosFirmas = p.num_firmas === 2;
+    const emp = p.empleado || {};
+    // Indicador compacto de firmas: empleado + cada firmante de la cadena
+    const firmasIconos = renderFirmasCompacto(p);
     return `
       <tr>
         <td>${emp.nombre_completo || '—'}</td>
@@ -343,9 +347,7 @@ function renderTabla() {
         <td>${formatFecha(p.fecha_fin)}</td>
         <td>${TIPO_LABELS[p.tipo] || p.tipo}</td>
         <td><span class="badge badge-${p.estado}">${ESTADO_LABELS[p.estado] || p.estado}</span></td>
-        <td>${firmaIcono(p.firmas, 'empleado')}</td>
-        <td>${firmaIcono(p.firmas, 'jefe_seccion')}</td>
-        <td>${dosFirmas ? '<span title="Solo 2 firmas" style="color:var(--text-light)">—</span>' : firmaIcono(p.firmas, 'jefe_grupo')}</td>
+        <td style="white-space:nowrap;">${firmasIconos}</td>
         <td>
           <button class="btn-sm" onclick="abrirDetalle('${p.id}')">Ver</button>
           ${p.pdf_final_url || p.pdf_url
@@ -367,6 +369,60 @@ function firmaIcono(firmas, rol) {
   return                              '<span class="firma-dot rechazado" title="Rechazado">✗</span>';
 }
 
+/**
+ * Renderiza iconos de firma compactos para la tabla del dashboard.
+ * Para permisos con cadena dinámica: empleado + cada eslabón de la cadena.
+ * Para permisos legacy: empleado + jefe_seccion [+ jefe_grupo].
+ */
+function renderFirmasCompacto(permiso) {
+  const firmas = permiso.firmas || [];
+
+  // Firma del empleado (siempre primera)
+  const firmaEmp = firmas.find(f => f.rol_firma === 'empleado');
+  let html = firmaEmp
+    ? `<span class="firma-dot aprobado" title="Empleado: firmado">✓</span>`
+    : `<span class="firma-dot pendiente" title="Empleado: pendiente">○</span>`;
+
+  if (permiso.cadena_emails && permiso.cadena_emails.length > 0) {
+    // Cadena dinámica: un círculo por cada firmante
+    const idx = permiso.firma_actual_idx ?? 0;
+    permiso.cadena_emails.forEach((email, i) => {
+      // Buscar si hay firma registrada con índice_cadena === i
+      const f = firmas.find(f => f.indice_cadena === i || (f.rol_firma !== 'empleado' && i < idx));
+      const nombre = email.split('@')[0];
+      if (i < idx) {
+        html += ` → <span class="firma-dot aprobado" title="${nombre}: firmado">✓</span>`;
+      } else if (i === idx && ['firmada_empleado', 'en_cadena'].includes(permiso.estado)) {
+        html += ` → <span class="firma-dot pendiente blink" title="${nombre}: pendiente">◉</span>`;
+      } else {
+        html += ` → <span class="firma-dot pendiente" title="${nombre}: en espera">○</span>`;
+      }
+    });
+  } else {
+    // Legacy: jefe_seccion y opcionalmente jefe_grupo
+    const fJefeSec = firmas.find(f => f.rol_firma === 'jefe_seccion');
+    const fJefeGrp = firmas.find(f => f.rol_firma === 'jefe_grupo');
+    if (fJefeSec) {
+      html += fJefeSec.accion === 'aprobado'
+        ? ` → <span class="firma-dot aprobado" title="Jefe Sección: aprobado">✓</span>`
+        : ` → <span class="firma-dot rechazado" title="Jefe Sección: rechazado">✗</span>`;
+    } else {
+      html += ` → <span class="firma-dot pendiente" title="Jefe Sección: pendiente">○</span>`;
+    }
+    if (permiso.num_firmas !== 2) {
+      if (fJefeGrp) {
+        html += fJefeGrp.accion === 'aprobado'
+          ? ` → <span class="firma-dot aprobado" title="Jefe Grupo: aprobado">✓</span>`
+          : ` → <span class="firma-dot rechazado" title="Jefe Grupo: rechazado">✗</span>`;
+      } else {
+        html += ` → <span class="firma-dot pendiente" title="Jefe Grupo: pendiente">○</span>`;
+      }
+    }
+  }
+
+  return html;
+}
+
 const TIPO_LABELS = {
   vacaciones:             'Vacaciones',
   asuntos_particulares:   'Asuntos Particulares',
@@ -376,9 +432,10 @@ const TIPO_LABELS = {
 
 const ESTADO_LABELS = {
   borrador:               'Borrador',
-  firmada_empleado:       'Pendiente Jefe Sección',
-  aprobada_jefe_seccion:  'Pendiente Jefe Grupo',
-  rechazada_jefe_seccion: 'Rechazado por Jefe Sección',
+  firmada_empleado:       'En cadena de firmas',
+  en_cadena:              'En cadena de firmas',
+  aprobada_jefe_seccion:  'Pendiente Jefe Grupo',    // legacy
+  rechazada_jefe_seccion: 'Rechazado',               // legacy
   aprobada:               'Aprobado',
   rechazada:              'Rechazado',
 };
@@ -389,11 +446,58 @@ const ESTADO_LABELS = {
 
 function resetFormulario() {
   ['tipoPermiso','fechaInicio','fechaFin','diasHabiles',
-   'direccion','telefono','motivo','observaciones','emailJefe'].forEach(id => {
+   'direccion','telefono','motivo','observaciones'].forEach(id => {
     const el = $(id);
     if (el) el.value = '';
   });
+  // Limpiar cadena de firmantes y añadir un campo vacío por defecto
+  const lista = $('listaFirmantes');
+  if (lista) {
+    lista.innerHTML = '';
+    anadirFirmante();  // arranca con un campo vacío
+  }
   toggleMotivo();
+}
+
+/** Añade una fila de firmante al formulario, opcionalmente con email prefijado */
+function anadirFirmante(email = '') {
+  const lista = $('listaFirmantes');
+  if (!lista) return;
+  const idx = lista.children.length + 1;
+  const row = document.createElement('div');
+  row.className = 'firmante-row';
+  row.style.cssText = 'display:flex;align-items:center;gap:0.5rem;';
+  row.innerHTML = `
+    <span style="color:var(--muted,#888);font-size:0.82rem;min-width:1.6rem;text-align:right;">${idx}.</span>
+    <input type="email" class="firmante-email"
+      placeholder="correo@organismo.es"
+      value="${email}"
+      style="flex:1;padding:0.5rem 0.75rem;border:1px solid var(--border,#ddd);border-radius:6px;font-size:0.9rem;" />
+    <button type="button" class="btn-outline btn-rm-firmante"
+      title="Eliminar firmante"
+      style="padding:0.3rem 0.6rem;font-size:0.85rem;line-height:1;color:var(--red,#c0392b);border-color:var(--red,#c0392b);"
+      onclick="this.closest('.firmante-row').remove(); renumerarFirmantes();">✕</button>
+  `;
+  lista.appendChild(row);
+}
+
+/** Renumera los índices de los firmantes tras eliminar uno */
+function renumerarFirmantes() {
+  const lista = $('listaFirmantes');
+  if (!lista) return;
+  [...lista.querySelectorAll('.firmante-row')].forEach((row, i) => {
+    const span = row.querySelector('span');
+    if (span) span.textContent = `${i + 1}.`;
+  });
+}
+
+/** Devuelve el array de emails de la cadena, en orden */
+function getCadenaEmails() {
+  const lista = $('listaFirmantes');
+  if (!lista) return [];
+  return [...lista.querySelectorAll('.firmante-email')]
+    .map(el => el.value.trim())
+    .filter(Boolean);
 }
 
 function toggleMotivo() {
@@ -413,12 +517,14 @@ async function handleFirmarYEnviar() {
   const motivo     = $('motivo')   ? $('motivo').value.trim()   : '';
   const observ     = $('observaciones') ? $('observaciones').value.trim() : '';
   const rolPeticionario = state.profile?.rol || 'empleado';
-  const emailJefe = $('emailJefe') ? $('emailJefe').value.trim() : '';
 
-  if (!tipo)       { toast('Selecciona el tipo de permiso.', 'error'); return; }
-  if (!fechaIni)   { toast('Indica la fecha de inicio.',    'error'); return; }
-  if (!fechaFin)   { toast('Indica la fecha de fin.',       'error'); return; }
-  if (!emailJefe)  { toast('Indica el correo del jefe de sección.', 'error'); return; }
+  // Cadena dinámica de firmantes
+  const cadenaEmails = getCadenaEmails();
+
+  if (!tipo)                    { toast('Selecciona el tipo de permiso.', 'error'); return; }
+  if (!fechaIni)                { toast('Indica la fecha de inicio.',    'error'); return; }
+  if (!fechaFin)                { toast('Indica la fecha de fin.',       'error'); return; }
+  if (cadenaEmails.length === 0){ toast('Añade al menos un firmante.',    'error'); return; }
   if (tipo === 'permiso_extraordinario' && !motivo) {
     toast('El motivo es obligatorio para permisos extraordinarios.', 'error'); return;
   }
@@ -427,10 +533,10 @@ async function handleFirmarYEnviar() {
   btn.disabled = true; btn.textContent = 'Preparando…';
 
   try {
-    // 2. Crear el permiso en la BD (estado borrador)
+    // 2. Crear el permiso en la BD (estado borrador) con cadena dinámica
     const datosPermiso = {
       empleado_id:          state.user.id,
-      empleo_peticionario:  state.profile?.empleo || '',  // para calcular num_firmas
+      empleo_peticionario:  state.profile?.empleo || '',
       tipo,
       fecha_inicio:         fechaIni,
       fecha_fin:            fechaFin,
@@ -439,8 +545,8 @@ async function handleFirmarYEnviar() {
       telefono,
       motivo,
       observaciones:        observ,
-      jefe_seccion_email:   emailJefe,
       rol_peticionario:     rolPeticionario,
+      cadena_emails:        cadenaEmails,   // ← nueva cadena dinámica
     };
     const permiso = await crearPermiso(datosPermiso);
     state.permisoActual = permiso;
@@ -469,7 +575,7 @@ async function handleFirmarYEnviar() {
       accion:      'aprobado',
     });
 
-    // 6. Regenerar PDF con la firma visible en la tabla de firmas
+    // 6. Regenerar PDF con la firma visible
     btn.textContent = 'Generando PDF firmado…';
     const permisoConFirma = {
       ...pdfPermiso,
@@ -478,22 +584,18 @@ async function handleFirmarYEnviar() {
     };
     const pdfConFirma = await generarPDFPermiso(permisoConFirma, permisoConFirma.firmas);
 
-    // 7. Subir PDF con firma visible a Firestore
+    // 7. Subir PDF a Firestore
     btn.textContent = 'Subiendo PDF…';
     const pdfPath = await subirPDF(state.user.id, permiso.id, pdfConFirma, 'empleado');
 
-    // 8. Actualizar estado en BD
-    // Si el peticionario es jefe_seccion, su solicitud va directamente al jefe_grupo
-    // (no hay nivel intermedio que apruebe — él mismo es ese nivel)
-    if (rolPeticionario === 'jefe_seccion') {
-      await aprobarJefeSeccion(permiso.id, pdfPath);
-    } else {
-      await actualizarTrasFirmaEmpleado(permiso.id, pdfPath);
-    }
+    // 8. Avanzar la cadena — firma_actual_idx pasa a 0 (primer firmante ya listo para recibir)
+    //    La firma del empleado no consume idx; los jefes empiezan desde idx=0.
+    await actualizarTrasFirmaEmpleado(permiso.id, pdfPath);
 
-    // 9. Notificar al jefe (jefe_seccion o jefe_grupo según el caso)
-    notificarJefe(emailJefe, state.profile.nombre_completo, permiso,
-      rolPeticionario === 'jefe_seccion' ? 'grupo' : 'seccion');
+    // 9. Notificar al primero de la cadena
+    if (cadenaEmails[0]) {
+      notificarFirmante(cadenaEmails[0], state.profile.nombre_completo, permiso, 1, cadenaEmails.length);
+    }
 
     toast('Solicitud enviada y firmada correctamente.', 'success');
     mostrarPanel('panelDashboard');
@@ -557,76 +659,149 @@ function renderDetalle(permiso) {
     `;
   }
 
-  // Estado de firmas
+  // ── Estado de firmas ──────────────────────────────────────────
   const firmasEl = $('firmasEstado');
   if (firmasEl) {
-    // Si num_firmas=2 (Comandante), no se muestra la fila del jefe_grupo
-    const roles = permiso.num_firmas === 2
-      ? ['empleado', 'jefe_seccion']
-      : ['empleado', 'jefe_seccion', 'jefe_grupo'];
-    const rolNombres = { empleado: 'Interesado', jefe_seccion: 'Jefe de Sección', jefe_grupo: 'Jefe de Grupo' };
-    firmasEl.innerHTML = roles.map(r => {
-      const f = firmas.find(f => f.rol_firma === r);
-      const firmante = f && f.firmante ? f.firmante : null;
-      if (!f) return `
-        <div class="firma-row pendiente">
+    const cadena = permiso.cadena_emails || [];
+    const idxActual = permiso.firma_actual_idx ?? 0;
+
+    if (cadena.length > 0) {
+      // ── Cadena dinámica ───────────────────────────────────────
+      let rows = '';
+
+      // Fila 1: firma del empleado (interesado)
+      const fEmp = firmas.find(f => f.rol_firma === 'empleado');
+      const empNombre = (permiso.empleado || {}).nombre_completo || '—';
+      rows += fEmp
+        ? `<div class="firma-row aprobado">
+             <span class="firma-dot-lg">✓</span>
+             <div><strong>Interesado</strong> · ${empNombre}<br>
+               <small>${formatFechaHora(fEmp.firmado_en)}</small></div>
+           </div>`
+        : `<div class="firma-row pendiente">
+             <span class="firma-dot-lg">○</span>
+             <div><strong>Interesado</strong> · ${empNombre}<br>
+               <small>Pendiente de firma</small></div>
+           </div>`;
+
+      // Filas: cada firmante de la cadena
+      cadena.forEach((email, i) => {
+        // Buscar si ya firmó: o por índice_cadena o por orden temporal (i < idxActual)
+        const yaFirmo = i < idxActual || permiso.estado === 'aprobada';
+        const esTurnoActual = i === idxActual && ['firmada_empleado','en_cadena'].includes(permiso.estado);
+        const nombre = email.split('@')[0];
+        const esFinal = i === cadena.length - 1;
+        const etiqueta = esFinal ? 'Firma final' : `Firmante ${i + 1}`;
+
+        // Buscar firma registrada (si existe)
+        const fCadena = firmas.find(f => f.indice_cadena === i);
+
+        if (yaFirmo && fCadena) {
+          rows += `<div class="firma-row ${fCadena.accion}">
+            <span class="firma-dot-lg">${fCadena.accion === 'aprobado' ? '✓' : '✗'}</span>
+            <div><strong>${etiqueta}</strong> · ${fCadena.firmante?.nombre_completo || nombre}
+              <br><small>${formatFechaHora(fCadena.firmado_en)}</small>
+              ${fCadena.accion === 'rechazado' && fCadena.motivo_rechazo
+                ? `<br><small class="texto-rojo">${fCadena.motivo_rechazo}</small>` : ''}
+            </div>
+          </div>`;
+        } else if (yaFirmo) {
+          // Firmó pero sin registro de índice (compatibilidad)
+          rows += `<div class="firma-row aprobado">
+            <span class="firma-dot-lg">✓</span>
+            <div><strong>${etiqueta}</strong> · ${nombre}<br><small>Aprobado</small></div>
+          </div>`;
+        } else if (esTurnoActual) {
+          rows += `<div class="firma-row pendiente" style="border-left:3px solid var(--jade,#2ecc71);">
+            <span class="firma-dot-lg" style="color:var(--jade,#2ecc71);">◉</span>
+            <div><strong>${etiqueta}</strong> · ${email}<br><small style="color:var(--jade,#2ecc71);">⟵ Pendiente (turno actual)</small></div>
+          </div>`;
+        } else {
+          rows += `<div class="firma-row pendiente" style="opacity:0.6;">
+            <span class="firma-dot-lg">○</span>
+            <div><strong>${etiqueta}</strong> · ${email}<br><small>En espera</small></div>
+          </div>`;
+        }
+      });
+
+      firmasEl.innerHTML = rows;
+
+    } else {
+      // ── Legacy (permisos sin cadena dinámica) ─────────────────
+      const roles = permiso.num_firmas === 2
+        ? ['empleado', 'jefe_seccion']
+        : ['empleado', 'jefe_seccion', 'jefe_grupo'];
+      const rolNombres = { empleado: 'Interesado', jefe_seccion: 'Jefe de Sección', jefe_grupo: 'Jefe de Grupo' };
+      firmasEl.innerHTML = roles.map(r => {
+        const f = firmas.find(f => f.rol_firma === r);
+        const firmante = f && f.firmante ? f.firmante : null;
+        if (!f) return `<div class="firma-row pendiente">
           <span class="firma-dot-lg">○</span>
           <div><strong>${rolNombres[r]}</strong><br><small>Pendiente de firma</small></div>
         </div>`;
-      return `
-        <div class="firma-row ${f.accion}">
+        return `<div class="firma-row ${f.accion}">
           <span class="firma-dot-lg">${f.accion === 'aprobado' ? '✓' : '✗'}</span>
-          <div>
-            <strong>${rolNombres[r]}</strong>${firmante ? ' · ' + firmante.nombre_completo : ''}
+          <div><strong>${rolNombres[r]}</strong>${firmante ? ' · ' + firmante.nombre_completo : ''}
             <br><small>${formatFechaHora(f.firmado_en)}</small>
             ${f.accion === 'rechazado' && f.motivo_rechazo ? `<br><small class="texto-rojo">${f.motivo_rechazo}</small>` : ''}
           </div>
         </div>`;
-    }).join('');
+      }).join('');
+    }
   }
 
-  // Mostrar/ocultar sección descarga empleado
-  const seccionDesc = $('seccionDescargaEmpleado');
-
-  // Mostrar/ocultar botones de acción según rol y estado
-  const seccionFirma = $('seccionFirmaJefe');
+  // ── Botón descargar ───────────────────────────────────────────
   const btnDescargar = $('btnDescargarPDF');
-
-  // Botón descargar: si hay PDF disponible
   if (btnDescargar) {
     btnDescargar.style.display = (permiso.pdf_url || permiso.pdf_final_url) ? '' : 'none';
   }
 
-  // Sección firma: solo para jefes, y solo si el estado corresponde
+  // ── Sección de acción de firma ────────────────────────────────
+  const seccionFirma = $('seccionFirmaJefe');
   if (seccionFirma) {
-    // El jefe_seccion designado en este permiso puede actuar como nivel final
-    // si el permiso ya pasó por el nivel empleado (estado aprobada_jefe_seccion)
-    // y él es el jefe_seccion_id — eso ocurre cuando el peticionario ES jefe_seccion
-    // y puso al Comandante como su jefe de grupo.
-    const esJefeDesignadoEnPermiso = permiso.jefe_seccion_id === state.user?.id;
+    const cadena = permiso.cadena_emails || [];
+    const idxActual = permiso.firma_actual_idx ?? 0;
+    const userId = state.user?.id;
 
-    const puedeAprobarComoSeccion =
-      rol === 'jefe_seccion' && permiso.estado === 'firmada_empleado';
-    const puedeAprobarComoGrupo =
-      rol === 'jefe_grupo' && permiso.estado === 'aprobada_jefe_seccion';
-    // Caso especial: jefe_seccion designado en el permiso actúa como firma final
-    const puedeAprobarComoFinal =
-      rol === 'jefe_seccion' && permiso.estado === 'aprobada_jefe_seccion' && esJefeDesignadoEnPermiso;
+    // ¿Es mi turno en la cadena dinámica?
+    const esMiTurnoEnCadena =
+      cadena.length > 0 &&
+      (permiso.cadena_ids || [])[idxActual] === userId &&
+      ['firmada_empleado', 'en_cadena'].includes(permiso.estado);
 
-    const puedeAprobar = puedeAprobarComoSeccion || puedeAprobarComoGrupo || puedeAprobarComoFinal;
+    // Legacy: compatibilidad con permisos sin cadena
+    const esJefeDesignadoEnPermiso = permiso.jefe_seccion_id === userId;
+    const puedeAprobarComoSeccionLegacy = rol === 'jefe_seccion' && permiso.estado === 'firmada_empleado' && cadena.length === 0;
+    const puedeAprobarComoGrupoLegacy  = rol === 'jefe_grupo'   && permiso.estado === 'aprobada_jefe_seccion' && cadena.length === 0;
+    const puedeAprobarComoFinalLegacy  = rol === 'jefe_seccion' && permiso.estado === 'aprobada_jefe_seccion' && esJefeDesignadoEnPermiso && cadena.length === 0;
+
+    const puedeAprobar = esMiTurnoEnCadena || puedeAprobarComoSeccionLegacy || puedeAprobarComoGrupoLegacy || puedeAprobarComoFinalLegacy;
     seccionFirma.style.display = puedeAprobar ? '' : 'none';
 
-    // Determinar qué rol de firma usar en Firestore
-    const rolFirma = (puedeAprobarComoGrupo || puedeAprobarComoFinal) ? 'jefe_grupo' : 'jefe_seccion';
     const btnAprobar = $('btnAprobar');
     if (btnAprobar) {
-      btnAprobar.dataset.rolFirma = rolFirma;
-      const esFirmaFinal = rolFirma === 'jefe_grupo' || (rolFirma === 'jefe_seccion' && permiso.num_firmas === 2);
-      if (esFirmaFinal) {
-        btnAprobar.innerHTML = '<span class="sign-icon">✓</span> Aprobar y firmar (firma final)';
+      // Determinar si es la firma final
+      let esFinal = false;
+      let rolFirma = 'jefe_seccion';
+
+      if (esMiTurnoEnCadena) {
+        esFinal  = idxActual === cadena.length - 1;
+        rolFirma = esFinal ? 'jefe_grupo' : 'jefe_seccion'; // nombre lógico para PDF
+        // Guardar índice para usarlo en handleAprobar
+        btnAprobar.dataset.indice_cadena = idxActual;
+        btnAprobar.dataset.esCadena      = 'true';
       } else {
-        btnAprobar.innerHTML = '<span class="sign-icon">✓</span> Aprobar y firmar con AutoFirma';
+        // Legacy
+        esFinal  = puedeAprobarComoGrupoLegacy || puedeAprobarComoFinalLegacy || (rol === 'jefe_seccion' && permiso.num_firmas === 2);
+        rolFirma = (puedeAprobarComoGrupoLegacy || puedeAprobarComoFinalLegacy) ? 'jefe_grupo' : 'jefe_seccion';
+        btnAprobar.dataset.esCadena = 'false';
       }
+
+      btnAprobar.dataset.rolFirma = rolFirma;
+      btnAprobar.dataset.esFinal  = esFinal ? 'true' : 'false';
+      btnAprobar.innerHTML = esFinal
+        ? '<span class="sign-icon">✓</span> Aprobar y firmar (firma final)'
+        : '<span class="sign-icon">✓</span> Aprobar y firmar con AutoFirma';
     }
   }
 }
@@ -635,16 +810,20 @@ async function handleAprobar() {
   const permiso  = state.permisoActual;
   if (!permiso)  { toast('No hay solicitud activa.', 'error'); return; }
 
-  const rolFirma = $('btnAprobar').dataset.rolFirma || 'jefe_seccion';
-  const btn      = $('btnAprobar');
-  btn.disabled   = true; btn.textContent = 'Abriendo AutoFirma…';
+  const btn         = $('btnAprobar');
+  const rolFirma    = btn.dataset.rolFirma    || 'jefe_seccion';
+  const esFinal     = btn.dataset.esFinal     === 'true';
+  const esCadena    = btn.dataset.esCadena    === 'true';
+  const indiceCadena = esCadena ? parseInt(btn.dataset.indice_cadena || '0') : null;
+
+  btn.disabled = true; btn.textContent = 'Abriendo AutoFirma…';
 
   try {
-    // Descargar el PDF actual de Storage
+    // Descargar PDF actual
     const rutaPDF  = permiso.pdf_url;
     const pdfBytes = await descargarPDF(rutaPDF);
 
-    // Cofirmar (AutoFirma añade firma criptográfica al PDF)
+    // Cofirmar con AutoFirma
     mostrarModalAutofirma();
     const { pdfFirmado, certInfo } = await cofirmarConAutofirma(pdfBytes, {
       rol:       rolFirma,
@@ -652,43 +831,55 @@ async function handleAprobar() {
     });
     ocultarModalAutofirma();
 
-    // Registrar firma en Firestore primero
+    // Registrar firma en Firestore
     btn.textContent = 'Registrando firma…';
     const firmaDoc = await registrarFirma({
-      permiso_id:  permiso.id,
-      firmante_id: state.user.id,
-      rol_firma:   rolFirma,
+      permiso_id:    permiso.id,
+      firmante_id:   state.user.id,
+      rol_firma:     rolFirma,
       certInfo,
-      accion:      'aprobado',
+      accion:        'aprobado',
+      indice_cadena: indiceCadena, // null para legacy
     });
 
-    // Regenerar PDF con TODAS las firmas visibles en la tabla
+    // Regenerar PDF con todas las firmas visibles
     btn.textContent = 'Generando PDF firmado…';
-    const todasFirmas  = await getFirmasDePermiso(permiso.id);
-    // Para Comandantes (num_firmas=2), la firma del jefe_seccion es la firma final
-    const esFinal      = rolFirma === 'jefe_grupo' || (rolFirma === 'jefe_seccion' && permiso.num_firmas === 2);
-    const estadoNuevo  = esFinal ? 'aprobada' : 'aprobada_jefe_seccion';
-    const permisoActualizado = {
+    const todasFirmas = await getFirmasDePermiso(permiso.id);
+    const estadoVisualizacion = esFinal ? 'aprobada' : 'en_cadena';
+    const permisoActualizado  = {
       ...permiso,
       empleado: permiso.empleado || state.profile,
-      estado:   estadoNuevo,
+      estado:   estadoVisualizacion,
       firmas:   todasFirmas,
     };
     const pdfConFirmas = await generarPDFPermiso(permisoActualizado, todasFirmas);
 
-    // Subir PDF con firmas visibles
+    // Subir PDF
     btn.textContent = 'Subiendo PDF…';
-    const sufijo  = esFinal ? 'final' : 'jefe_sec';
+    const sufijo  = esFinal ? 'final' : 'parcial';
     const pdfPath = await subirPDF(state.user.id, permiso.id, pdfConFirmas, sufijo);
 
-    // Actualizar estado en Firestore
-    if (esFinal) {
-      await aprobarJefeGrupo(permiso.id, pdfPath);   // guarda en pdf_final_url y estado='aprobada'
-      notificarAprobado(permiso);
+    // Avanzar cadena o cerrar legacy
+    if (esCadena) {
+      // Cadena dinámica: avanzar al siguiente firmante
+      const { esFinal: yaFinal, siguienteEmail } = await avanzarCadenaFirma(permiso.id, pdfPath);
+      if (yaFinal) {
+        notificarAprobado(permiso);
+      } else if (siguienteEmail) {
+        const cadena = permiso.cadena_emails || [];
+        const totalFirmantes = cadena.length;
+        notificarFirmante(siguienteEmail, state.profile.nombre_completo, permiso, indiceCadena + 2, totalFirmantes);
+      }
     } else {
-      await aprobarJefeSeccion(permiso.id, pdfPath);
-      const jefeGrupo = await getJefeGrupo();
-      if (jefeGrupo) notificarJefe(jefeGrupo.email, state.profile.nombre_completo, permiso, 'grupo');
+      // Legacy: lógica antigua
+      if (esFinal) {
+        await aprobarJefeGrupo(permiso.id, pdfPath);
+        notificarAprobado(permiso);
+      } else {
+        await aprobarJefeSeccion(permiso.id, pdfPath);
+        const jefeGrupo = await getJefeGrupo();
+        if (jefeGrupo) notificarJefe(jefeGrupo.email, state.profile.nombre_completo, permiso, 'grupo');
+      }
     }
 
     toast('Solicitud aprobada y firmada.', 'success');
@@ -723,18 +914,11 @@ async function handleConfirmarRechazo() {
   const btn      = $('btnConfirmarRechazo');
   btn.disabled   = true; btn.textContent = 'Procesando…';
 
-  try {
-    if (rolFirma === 'jefe_seccion') {
-      // Comandantes: solo 2 firmas → rechazo del jefe_seccion es rechazo final
-      if (permiso.num_firmas === 2) {
-        await rechazarJefeGrupo(permiso.id, motivo);  // estado='rechazada'
-      } else {
-        await rechazarJefeSeccion(permiso.id, motivo);  // estado='rechazada_jefe_seccion'
-      }
-    } else {
-      await rechazarJefeGrupo(permiso.id, motivo);
-    }
+  const btn2 = $('btnAprobar');
+  const esCadena     = btn2 && btn2.dataset.esCadena === 'true';
+  const indiceCadena = esCadena ? parseInt(btn2.dataset.indice_cadena || '0') : null;
 
+  try {
     // Registrar firma de rechazo (sin PDF, sin AutoFirma)
     await registrarFirma({
       permiso_id:     permiso.id,
@@ -743,7 +927,11 @@ async function handleConfirmarRechazo() {
       certInfo:       { raw: '', nombre: state.profile.nombre_completo, dni: state.profile.dni, hash: '' },
       accion:         'rechazado',
       motivo_rechazo: motivo,
+      indice_cadena:  indiceCadena,
     });
+
+    // Marcar el permiso como rechazado
+    await rechazarJefeGrupo(permiso.id, motivo);  // reutilizamos — pone estado='rechazada'
 
     // Notificar al empleado del rechazo
     notificarRechazo(permiso, motivo, rolFirma);
@@ -803,6 +991,39 @@ async function handleEliminarPermiso(permisoId) {
 // ══════════════════════════════════════════════════════════════
 // NOTIFICACIONES (mailto)
 // ══════════════════════════════════════════════════════════════
+
+/**
+ * Notifica al siguiente firmante de la cadena dinámica.
+ * @param {string} emailFirmante - Email del firmante a notificar
+ * @param {string} nombreEmpleado - Nombre del interesado (empleado)
+ * @param {object} permiso - Objeto permiso
+ * @param {number} posicion - Posición en la cadena (1-based, para mostrar al usuario)
+ * @param {number} totalFirmantes - Total de firmantes en la cadena
+ */
+function notificarFirmante(emailFirmante, nombreEmpleado, permiso, posicion, totalFirmantes) {
+  if (!emailFirmante) return;
+  const esFinal = posicion === totalFirmantes;
+  const rolLabel = esFinal ? 'Firma final' : `Firmante ${posicion} de ${totalFirmantes}`;
+  const appUrl   = window.location.origin + window.location.pathname;
+  const asunto   = encodeURIComponent(
+    `[VacaFirma] ACCIÓN REQUERIDA — Solicitud de permiso de ${nombreEmpleado}`
+  );
+  const cuerpo   = encodeURIComponent(
+    `Estimado/a firmante (${rolLabel}),\n\n` +
+    `${nombreEmpleado} ha enviado una solicitud de permiso que requiere tu firma.\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Tipo:    ${TIPO_LABELS[permiso.tipo] || permiso.tipo}\n` +
+    `Inicio:  ${formatFecha(permiso.fecha_inicio)}\n` +
+    `Fin:     ${formatFecha(permiso.fecha_fin)}\n` +
+    `Días:    ${permiso.dias_habiles || '—'}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `Accede a VacaFirma para revisar y firmar:\n${appUrl}\n\n` +
+    `Referencia: ${permiso.id}\n\n` +
+    `── Mensaje automático de VacaFirma ──`
+  );
+  window.location.href = `mailto:${emailFirmante}?subject=${asunto}&body=${cuerpo}`;
+  toast(`Solicitud enviada. Notificando a ${emailFirmante}…`, 'success', 7000);
+}
 
 function notificarJefe(emailJefe, nombreEmpleado, permiso, etapa) {
   if (!emailJefe) return;

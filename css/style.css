@@ -814,3 +814,31 @@ body {
   line-height: 1;
 }
 .tab-badge:empty { display: none; }
+
+/* ── CADENA DE FIRMANTES (formulario) ──────────────────────── */
+.firmante-row input:focus {
+  outline: none;
+  border-color: var(--navy-light);
+  box-shadow: 0 0 0 2px rgba(15,26,46,0.08);
+}
+
+#cadenaFirmantesWrap label {
+  font-size: 0.9rem;
+  color: var(--text-main);
+}
+
+/* Firma dot que parpadea para indicar turno actual */
+@keyframes blink-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.firma-dot.blink,
+.firma-dot-lg.blink {
+  animation: blink-dot 1.4s ease-in-out infinite;
+}
+
+/* Tabla con columna Firmas más ancha */
+.solicitudes-table th:nth-child(6),
+.solicitudes-table td:nth-child(6) {
+  min-width: 100px;
+}

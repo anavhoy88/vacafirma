@@ -224,28 +224,83 @@ async function _enriquecerConPerfiles(permisos) {
 const _EMPLEOS_DOS_FIRMAS = new Set(['comandante']);
 
 async function crearPermiso(datos) {
-  let jefe_seccion_id = null;
-  if (datos.jefe_seccion_email) {
-    const jefe = await buscarUsuarioPorEmail(datos.jefe_seccion_email);
-    if (jefe) jefe_seccion_id = jefe.id;
+  // ── Cadena dinámica de firmantes ──────────────────────────────
+  // datos.cadena_emails: array de emails en orden (obligatorio)
+  // Resolvemos cada email a un uid de user_profiles
+  const cadena_emails = datos.cadena_emails || [];
+  const cadena_ids = [];
+  for (const email of cadena_emails) {
+    const usuario = await buscarUsuarioPorEmail(email);
+    cadena_ids.push(usuario ? usuario.id : null);
   }
 
-  // Si el peticionario es jefe_seccion, su solicitud va directamente al jefe_grupo:
-  // 2 firmas (empleado/jefe_seccion + jefe_grupo). Para el resto, 3 firmas.
-  const num_firmas = (datos.rol_peticionario === 'jefe_seccion') ? 2 : 3;
+  const num_firmas = cadena_emails.length + 1; // +1 por la firma del empleado
 
   const permiso = {
-    ...datos,
-    jefe_seccion_id,
+    tipo:              datos.tipo,
+    fecha_inicio:      datos.fecha_inicio,
+    fecha_fin:         datos.fecha_fin,
+    dias_habiles:      datos.dias_habiles,
+    direccion:         datos.direccion || '',
+    telefono:          datos.telefono  || '',
+    motivo:            datos.motivo    || '',
+    observaciones:     datos.observaciones || '',
+    empleado_id:       datos.empleado_id,
+    empleo_peticionario: datos.empleo_peticionario || '',
+    rol_peticionario:  datos.rol_peticionario || 'empleado',
+    // Cadena dinámica
+    cadena_emails,
+    cadena_ids,
+    firma_actual_idx:  0,          // 0 = toca firmar al primero de la cadena
     num_firmas,
-    estado:     'borrador',
-    anio:       new Date(datos.fecha_inicio).getFullYear(),
-    created_at: serverTimestamp(),
-    updated_at: serverTimestamp(),
+    // Compatibilidad con permisos antiguos (jefe_seccion_id sigue existiendo)
+    jefe_seccion_id:   cadena_ids[0] || null,
+    jefe_seccion_email: cadena_emails[0] || '',
+    estado:            'borrador',
+    anio:              new Date(datos.fecha_inicio).getFullYear(),
+    created_at:        serverTimestamp(),
+    updated_at:        serverTimestamp(),
   };
 
-  const ref = await addDoc(collection(_db, 'permisos'), permiso);
-  return { id: ref.id, ...permiso };
+  const docRef = await addDoc(collection(_db, 'permisos'), permiso);
+  return { id: docRef.id, ...permiso };
+}
+
+/**
+ * Avanza la cadena de firmas:
+ *  - Si quedan más firmantes → actualiza firma_actual_idx y pdf_url
+ *  - Si era el último → marca como 'aprobada' y guarda pdf_final_url
+ * Devuelve { esFinal, siguienteEmail } para que app.js pueda notificar.
+ */
+async function avanzarCadenaFirma(permisoId, pdfUrl) {
+  const snap = await getDoc(doc(_db, 'permisos', permisoId));
+  if (!snap.exists()) throw new Error('Permiso no encontrado');
+  const data = snap.data();
+
+  const cadena = data.cadena_ids || [];
+  const actual = data.firma_actual_idx ?? 0;
+  const siguiente = actual + 1;
+
+  if (siguiente >= cadena.length) {
+    // Era el último firmante → aprobada
+    await updateDoc(doc(_db, 'permisos', permisoId), {
+      estado:        'aprobada',
+      pdf_final_url: pdfUrl,
+      firma_actual_idx: siguiente,
+      updated_at:    serverTimestamp(),
+    });
+    return { esFinal: true, siguienteEmail: null };
+  } else {
+    // Hay más firmantes
+    const emails = data.cadena_emails || [];
+    await updateDoc(doc(_db, 'permisos', permisoId), {
+      estado:          'en_cadena',
+      pdf_url:         pdfUrl,
+      firma_actual_idx: siguiente,
+      updated_at:      serverTimestamp(),
+    });
+    return { esFinal: false, siguienteEmail: emails[siguiente] || null };
+  }
 }
 
 async function getMisPermisos(userId) {
@@ -288,6 +343,60 @@ async function getPermisosParaJefeSeccion(jefeId) {
   );
   permisos.sort((a, b) => (b.created_at?.seconds || 0) - (a.created_at?.seconds || 0));
   return await _enriquecerConPerfiles(permisos);
+}
+
+/**
+ * Obtiene permisos donde el usuario actual es el próximo firmante en la cadena.
+ * Estrategia: query por cadena_ids (array-contains) + filtrar por firma_actual_idx en memoria.
+ * Incluye también permisos legacy (jefe_seccion_id) para compatibilidad.
+ */
+async function getPermisosParaFirmante(userId) {
+  // Query 1: permisos de cadena dinámica donde el userId está en cadena_ids
+  const qCadena = query(
+    collection(_db, 'permisos'),
+    where('cadena_ids', 'array-contains', userId)
+  );
+  // Query 2: permisos legacy (jefe_seccion_id) para compatibilidad hacia atrás
+  const qLegacy = query(
+    collection(_db, 'permisos'),
+    where('jefe_seccion_id', '==', userId)
+  );
+
+  const [snapCadena, snapLegacy] = await Promise.all([getDocs(qCadena), getDocs(qLegacy)]);
+
+  // Unir y deduplicar
+  const docsMap = new Map();
+  for (const d of [...snapCadena.docs, ...snapLegacy.docs]) {
+    docsMap.set(d.id, d);
+  }
+
+  const estadosActivos = ['firmada_empleado', 'en_cadena', 'aprobada_jefe_seccion'];
+
+  const permisos = await Promise.all(
+    [...docsMap.values()].map(async d => {
+      const data = d.data();
+
+      // Cadena dinámica: solo si es el turno de este firmante
+      if (data.cadena_ids && Array.isArray(data.cadena_ids)) {
+        const idx = data.firma_actual_idx ?? 0;
+        const esMiTurno = data.cadena_ids[idx] === userId;
+        const estadoActivo = estadosActivos.includes(data.estado);
+        if (!esMiTurno || !estadoActivo) return null;
+      } else {
+        // Legacy: compatible con permisos sin cadena_ids
+        if (!estadosActivos.includes(data.estado)) return null;
+      }
+
+      const permiso = { id: d.id, ...data };
+      const firmasSnap = await getDocs(collection(_db, 'permisos', d.id, 'firmas'));
+      permiso.firmas = firmasSnap.docs.map(f => ({ id: f.id, ...f.data() }));
+      return permiso;
+    })
+  );
+
+  const resultado = permisos.filter(Boolean);
+  resultado.sort((a, b) => (b.created_at?.seconds || 0) - (a.created_at?.seconds || 0));
+  return await _enriquecerConPerfiles(resultado);
 }
 
 async function getPermisosParaJefeGrupo() {
@@ -390,7 +499,7 @@ async function rechazarJefeGrupo(permisoId, motivo) {
 // FIRMAS — registro criptográfico
 // ══════════════════════════════════════════════════════════════
 
-async function registrarFirma({ permiso_id, firmante_id, rol_firma, certInfo, accion, motivo_rechazo }) {
+async function registrarFirma({ permiso_id, firmante_id, rol_firma, certInfo, accion, motivo_rechazo, indice_cadena }) {
   const firma = {
     permiso_id,
     firmante_id,
@@ -402,6 +511,8 @@ async function registrarFirma({ permiso_id, firmante_id, rol_firma, certInfo, ac
     accion,
     motivo_rechazo: motivo_rechazo || null,
     firmado_en:     new Date().toISOString(),
+    // Índice en la cadena dinámica (null para permisos legacy / firma empleado)
+    indice_cadena:  indice_cadena !== undefined && indice_cadena !== null ? indice_cadena : null,
   };
   // Guardamos en subcolección permisos/{id}/firmas
   const ref = await addDoc(collection(_db, 'permisos', permiso_id, 'firmas'), firma);
@@ -567,12 +678,14 @@ Object.assign(window, {
   getMisPermisos,
   getPermisosParaJefeSeccion,
   getPermisosParaJefeGrupo,
+  getPermisosParaFirmante,
   getPermisoById,
   actualizarTrasFirmaEmpleado,
   aprobarJefeSeccion,
   rechazarJefeSeccion,
   aprobarJefeGrupo,
   rechazarJefeGrupo,
+  avanzarCadenaFirma,
   // Firmas
   registrarFirma,
   getFirmasDePermiso,
