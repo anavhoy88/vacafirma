@@ -91,12 +91,18 @@ function bindEvents() {
   $('btnGuardarPerfil')  && $('btnGuardarPerfil').addEventListener('click', handleGuardarPerfil);
 
   // Dashboard
-  $('btnNuevoPermiso')   && $('btnNuevoPermiso').addEventListener('click', () => {
+  $('btnNuevoPermiso')   && $('btnNuevoPermiso').addEventListener('click', async () => {
     resetFormulario();
-    // Si el peticionario es jefe_seccion, ocultar campo email del jefe
-    const rol = state.profile?.rol || 'empleado';
-    const wrapJefe = $('emailJefeWrap');
-    if (wrapJefe) wrapJefe.style.display = rol === 'jefe_seccion' ? 'none' : '';
+    // Si el peticionario es jefe_seccion, precargar el email del jefe_grupo
+    // (editable por si hay relevo de Teniente Coronel)
+    if (state.profile?.rol === 'jefe_seccion') {
+      const jefeGrupo = await getJefeGrupo();
+      if (jefeGrupo && $('emailJefe')) {
+        $('emailJefe').value = jefeGrupo.email;
+        const label = $('emailJefeWrap')?.querySelector('label');
+        if (label) label.textContent = 'Correo del jefe de grupo *';
+      }
+    }
     mostrarPanel('panelFormulario');
   });
 
@@ -407,14 +413,7 @@ async function handleFirmarYEnviar() {
   const motivo     = $('motivo')   ? $('motivo').value.trim()   : '';
   const observ     = $('observaciones') ? $('observaciones').value.trim() : '';
   const rolPeticionario = state.profile?.rol || 'empleado';
-  let emailJefe = $('emailJefe') ? $('emailJefe').value.trim() : '';
-
-  // Si el peticionario es jefe_seccion, su superior es siempre el jefe_grupo
-  if (rolPeticionario === 'jefe_seccion') {
-    const jefeGrupo = await getJefeGrupo();
-    if (!jefeGrupo) { toast('No se encontró el jefe de grupo en el sistema.', 'error'); return; }
-    emailJefe = jefeGrupo.email;
-  }
+  const emailJefe = $('emailJefe') ? $('emailJefe').value.trim() : '';
 
   if (!tipo)       { toast('Selecciona el tipo de permiso.', 'error'); return; }
   if (!fechaIni)   { toast('Indica la fecha de inicio.',    'error'); return; }
