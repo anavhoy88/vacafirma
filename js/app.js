@@ -440,6 +440,7 @@ async function handleFirmarYEnviar() {
       motivo,
       observaciones:        observ,
       jefe_seccion_email:   emailJefe,
+      rol_peticionario:     rolPeticionario,
     };
     const permiso = await crearPermiso(datosPermiso);
     state.permisoActual = permiso;

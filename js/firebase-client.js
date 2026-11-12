@@ -230,8 +230,9 @@ async function crearPermiso(datos) {
     if (jefe) jefe_seccion_id = jefe.id;
   }
 
-  const empleoLower = (datos.empleo_peticionario || '').trim().toLowerCase();
-  const num_firmas  = _EMPLEOS_DOS_FIRMAS.has(empleoLower) ? 2 : 3;
+  // Si el peticionario es jefe_seccion, su solicitud va directamente al jefe_grupo:
+  // 2 firmas (empleado/jefe_seccion + jefe_grupo). Para el resto, 3 firmas.
+  const num_firmas = (datos.rol_peticionario === 'jefe_seccion') ? 2 : 3;
 
   const permiso = {
     ...datos,
