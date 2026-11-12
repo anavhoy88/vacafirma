@@ -726,3 +726,36 @@ body {
   .dashboard-header { flex-direction: column; }
   .table-wrapper { overflow-x: auto; }
 }
+
+/* ── BOTONES PEQUEÑOS EN TABLA ───────────────────────────────── */
+.btn-sm {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1.5px solid var(--navy, #1a2744);
+  background: var(--navy, #1a2744);
+  color: #fff;
+  transition: opacity 0.15s;
+  font-family: inherit;
+}
+.btn-sm:hover { opacity: 0.8; }
+.btn-sm-outline {
+  background: transparent;
+  color: var(--navy, #1a2744);
+}
+.btn-sm-outline:hover { background: var(--cream, #f5f0e8); }
+.btn-sm-danger {
+  background: transparent;
+  color: #c0392b;
+  border-color: #c0392b;
+}
+.btn-sm-danger:hover { background: #fdf2f2; }
+
+/* Firma dot en tabla */
+.firma-dot { font-size: 1rem; }
+.firma-dot.aprobado  { color: var(--jade, #2e7d52); }
+.firma-dot.pendiente { color: var(--text-light, #aaa); }
+.firma-dot.rechazado { color: var(--red-soft, #c0392b); }

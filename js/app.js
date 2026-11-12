@@ -247,6 +247,9 @@ function renderTabla() {
           ${p.pdf_final_url || p.pdf_url
             ? `<button class="btn-sm btn-sm-outline" onclick="descargarPDFPermiso('${p.id}')">PDF</button>`
             : ''}
+          ${p.estado === 'borrador'
+            ? `<button class="btn-sm btn-sm-danger" onclick="handleEliminarPermiso('${p.id}')">✕</button>`
+            : ''}
         </td>
       </tr>`;
   }).join('');
@@ -638,6 +641,18 @@ async function descargarPDFPermiso(permisoId) {
     window.open(url, '_blank', 'noopener,noreferrer');
   } catch (err) {
     toast('Error: ' + err.message, 'error');
+  }
+}
+
+async function handleEliminarPermiso(permisoId) {
+  if (!confirm('¿Eliminar esta solicitud? Esta acción no se puede deshacer.')) return;
+  try {
+    await eliminarPermiso(permisoId);
+    state.permisos = state.permisos.filter(p => p.id !== permisoId);
+    renderTabla();
+    toast('Solicitud eliminada.', 'success');
+  } catch (err) {
+    toast('Error al eliminar: ' + err.message, 'error');
   }
 }
 

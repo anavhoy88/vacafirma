@@ -18,6 +18,24 @@ const COL = {
   amarillo:  [0.6, 0.4, 0.0],
 };
 
+// Formateadores de fecha para el PDF (autónomo, no depende de app.js)
+function _fmtFechaPDF(isoStr) {
+  if (!isoStr) return '-';
+  try {
+    const d = new Date(isoStr + (String(isoStr).includes('T') ? '' : 'T00:00:00'));
+    return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch(e) { return String(isoStr); }
+}
+function _fmtFechaHoraPDF(isoStr) {
+  if (!isoStr) return '-';
+  try {
+    return new Date(isoStr).toLocaleString('es-ES', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  } catch(e) { return String(isoStr); }
+}
+
 // Convierte caracteres especiales del español a ASCII compatible con WinAnsi/Helvetica
 function sanitizePDF(str) {
   if (!str) return str;
@@ -137,8 +155,8 @@ async function generarPDFPermiso(permiso, firmas = []) {
   rect(T_LEFT, ROW_Y, T_W, ROW_H, COL.grisCelda, null);
   const dataY = ROW_Y + 5;
 
-  const fInicio = formatFecha(permiso.fecha_inicio);
-  const fFin    = formatFecha(permiso.fecha_fin);
+  const fInicio = _fmtFechaPDF(permiso.fecha_inicio);
+  const fFin    = _fmtFechaPDF(permiso.fecha_fin);
 
   txt(fInicio,                        cols.inicio  + 3, dataY, { size: 8 });
   txt(fFin,                           cols.fin     + 3, dataY, { size: 8 });
@@ -246,7 +264,7 @@ async function generarPDFPermiso(permiso, firmas = []) {
           FC.nombre + 3, fY, { size: 8, maxWidth: 165 });
       txt(firmante.dni || firma.dni_cert || '',
           FC.dni    + 3, fY, { size: 8 });
-      txt(formatFechaHora(firma.firmado_en),
+      txt(_fmtFechaHoraPDF(firma.firmado_en),
           FC.fecha  + 3, fY, { size: 7 });
 
       const accionColor = firma.accion === 'aprobado' ? COL.verde : COL.rojo;
@@ -280,7 +298,7 @@ async function generarPDFPermiso(permiso, firmas = []) {
 
   const pieY = 25;
   lineh(T_LEFT, pieY + 14, T_LEFT + T_W);
-  txt('Documento generado electrónicamente por VacaFirma · ' + formatFechaHora(new Date().toISOString()),
+  txt('Documento generado electronicamente por VacaFirma - ' + _fmtFechaHoraPDF(new Date().toISOString()),
       T_LEFT, pieY + 4, { size: 6, color: COL.gris });
   txt('ID: ' + (permiso.id || ''), T_LEFT + T_W - 220, pieY + 4, { size: 6, color: COL.gris });
 

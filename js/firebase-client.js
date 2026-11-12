@@ -23,6 +23,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   collection,
   query,
   where,
@@ -220,7 +221,8 @@ async function getMisPermisos(userId) {
   }));
   // Ordenar por fecha desc en memoria
   permisos.sort((a, b) => (b.created_at?.seconds || 0) - (a.created_at?.seconds || 0));
-  return permisos;
+  // Enriquecer con perfil del propio empleado (para columna Empleado y PDF)
+  return await _enriquecerConPerfiles(permisos);
 }
 
 async function getPermisosParaJefeSeccion(jefeId) {
@@ -373,6 +375,16 @@ async function getFirmasDePermiso(permisoId) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ══ ADMIN — Borrado de permisos ══════════════════════════════
+
+async function eliminarPermiso(permisoId) {
+  // Borrar subcolección de firmas primero
+  const firmasSnap = await getDocs(collection(_db, 'permisos', permisoId, 'firmas'));
+  await Promise.all(firmasSnap.docs.map(d => deleteDoc(d.ref)));
+  // Borrar el documento principal
+  await deleteDoc(doc(_db, 'permisos', permisoId));
+}
+
 // PDF — almacenado en Firestore como base64 (evita CORS de Storage)
 // El "path" que devolvemos es "firestore:{permisoId}:{campo}" para
 // que app.js pueda seguir llamando a getUrlPDF / descargarPDF con
@@ -462,4 +474,6 @@ Object.assign(window, {
   subirPDF,
   getUrlPDF,
   descargarPDF,
+  // Admin
+  eliminarPermiso,
 });
