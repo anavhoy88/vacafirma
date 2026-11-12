@@ -306,6 +306,29 @@
 
   </main>
 
+  <!-- ═══════════════════════════════════════════════════ MODAL CONTRASEÑA -->
+  <div class="modal-overlay hidden" id="modalContrasena">
+    <div class="modal">
+      <div class="modal-icon">🔑</div>
+      <h3>Establecer contraseña</h3>
+      <p style="margin-bottom:1rem;color:var(--text-muted,#666);font-size:0.9rem;">
+        Añade una contraseña a tu cuenta para poder acceder sin depender del enlace de correo.
+      </p>
+      <div class="input-group" style="text-align:left;">
+        <label for="nuevaContrasena">Nueva contraseña</label>
+        <input type="password" id="nuevaContrasena" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+      </div>
+      <div class="input-group" style="text-align:left;margin-top:0.5rem;">
+        <label for="nuevaContrasenaConfirm">Confirmar contraseña</label>
+        <input type="password" id="nuevaContrasenaConfirm" placeholder="Repite la contraseña" autocomplete="new-password" />
+      </div>
+      <div class="modal-actions" style="margin-top:1rem;">
+        <button class="btn-outline" id="btnCerrarModalContrasena">Ahora no</button>
+        <button class="btn-primary" id="btnGuardarContrasena">Guardar contraseña</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════════════════════════════════════════════════ TOAST -->
   <div class="toast-container" id="toastContainer"></div>
 
