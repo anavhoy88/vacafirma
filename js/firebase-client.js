@@ -585,4 +585,5 @@ Object.assign(window, {
   setRolPorEmail,
   reasignarJefeSecciones,
   establecerContrasena,
+  usuarioSinContrasena,
 });

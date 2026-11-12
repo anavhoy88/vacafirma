@@ -44,12 +44,9 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         await cargarDashboard();
         mostrarPanel('panelDashboard');
-        // Si el usuario solo tiene magic link (sin contraseña), ofrecer establecerla
-        const proveedores = session.user.app_metadata?.providers || session.user.identities?.map(i => i.provider) || [];
-        const soloMagicLink = !proveedores.includes('email') && (proveedores.includes('magiclink') || proveedores.length === 0 || (session.user.identities?.length > 0 && !session.user.identities.some(i => i.identity_data?.password)));
-        // Detección más robusta: si no tiene proveedor 'email' (password) en sus identities
-        const tienePassword = session.user.identities?.some(i => i.provider === 'email') ?? false;
-        if (!tienePassword && $('modalContrasena')) {
+        // Mostrar modal de contraseña solo si el usuario NO tiene proveedor 'password'
+        // usuarioSinContrasena() usa Firebase Auth providerData — es la fuente correcta
+        if (usuarioSinContrasena() && $('modalContrasena')) {
           $('modalContrasena').classList.remove('hidden');
         }
       }
