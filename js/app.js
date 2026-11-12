@@ -2,6 +2,22 @@
 // app.js — VacaFirma 2.0 — Controlador principal
 // ═══════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════
+// EMPLEOS CON 2 FIRMAS (empleado + jefe_seccion, sin jefe_grupo)
+// Resto de empleos requieren 3 firmas (+ jefe_grupo)
+// ══════════════════════════════════════════════════════════════
+const EMPLEOS_DOS_FIRMAS = new Set([
+  'comandante',
+  'Comandante',
+  'COMANDANTE',
+]);
+
+/** Devuelve true si el permiso solo necesita firma de jefe_seccion (2 firmas total) */
+function esDosFiremas(permiso) {
+  const empleo = (permiso.empleado?.empleo || permiso.empleo_peticionario || '').trim().toLowerCase();
+  return empleo === 'comandante';
+}
+
 // ── Estado global ─────────────────────────────────────────────
 let state = {
   session:        null,
@@ -268,7 +284,8 @@ function renderTabla() {
   }
 
   tbody.innerHTML = state.permisos.map(p => {
-    const emp = p.empleado || {};
+    const emp      = p.empleado || {};
+    const dosFirmas = p.num_firmas === 2;
     return `
       <tr>
         <td>${emp.nombre_completo || '—'}</td>
@@ -278,7 +295,7 @@ function renderTabla() {
         <td><span class="badge badge-${p.estado}">${ESTADO_LABELS[p.estado] || p.estado}</span></td>
         <td>${firmaIcono(p.firmas, 'empleado')}</td>
         <td>${firmaIcono(p.firmas, 'jefe_seccion')}</td>
-        <td>${firmaIcono(p.firmas, 'jefe_grupo')}</td>
+        <td>${dosFirmas ? '<span title="Solo 2 firmas" style="color:var(--text-light)">—</span>' : firmaIcono(p.firmas, 'jefe_grupo')}</td>
         <td>
           <button class="btn-sm" onclick="abrirDetalle('${p.id}')">Ver</button>
           ${p.pdf_final_url || p.pdf_url
@@ -361,16 +378,17 @@ async function handleFirmarYEnviar() {
   try {
     // 2. Crear el permiso en la BD (estado borrador)
     const datosPermiso = {
-      empleado_id:        state.user.id,
+      empleado_id:          state.user.id,
+      empleo_peticionario:  state.profile?.empleo || '',  // para calcular num_firmas
       tipo,
-      fecha_inicio:       fechaIni,
-      fecha_fin:          fechaFin,
-      dias_habiles:       diasHab,
+      fecha_inicio:         fechaIni,
+      fecha_fin:            fechaFin,
+      dias_habiles:         diasHab,
       direccion,
       telefono,
       motivo,
-      observaciones:      observ,
-      jefe_seccion_email: emailJefe,
+      observaciones:        observ,
+      jefe_seccion_email:   emailJefe,
     };
     const permiso = await crearPermiso(datosPermiso);
     state.permisoActual = permiso;
@@ -483,7 +501,10 @@ function renderDetalle(permiso) {
   // Estado de firmas
   const firmasEl = $('firmasEstado');
   if (firmasEl) {
-    const roles = ['empleado','jefe_seccion','jefe_grupo'];
+    // Si num_firmas=2 (Comandante), no se muestra la fila del jefe_grupo
+    const roles = permiso.num_firmas === 2
+      ? ['empleado', 'jefe_seccion']
+      : ['empleado', 'jefe_seccion', 'jefe_grupo'];
     const rolNombres = { empleado: 'Interesado', jefe_seccion: 'Jefe de Sección', jefe_grupo: 'Jefe de Grupo' };
     firmasEl.innerHTML = roles.map(r => {
       const f = firmas.find(f => f.rol_firma === r);
@@ -527,7 +548,15 @@ function renderDetalle(permiso) {
 
     const rolFirma = rol === 'jefe_grupo' ? 'jefe_grupo' : 'jefe_seccion';
     const btnAprobar = $('btnAprobar');
-    if (btnAprobar) btnAprobar.dataset.rolFirma = rolFirma;
+    if (btnAprobar) {
+      btnAprobar.dataset.rolFirma = rolFirma;
+      // Si es Comandante y firma el jefe_seccion, es la firma final → texto más claro
+      if (rolFirma === 'jefe_seccion' && permiso.num_firmas === 2) {
+        btnAprobar.innerHTML = '<span class="sign-icon">✓</span> Aprobar y firmar (firma final)';
+      } else {
+        btnAprobar.innerHTML = '<span class="sign-icon">✓</span> Aprobar y firmar con AutoFirma';
+      }
+    }
   }
 }
 
@@ -564,8 +593,10 @@ async function handleAprobar() {
 
     // Regenerar PDF con TODAS las firmas visibles en la tabla
     btn.textContent = 'Generando PDF firmado…';
-    const todasFirmas = await getFirmasDePermiso(permiso.id);
-    const estadoNuevo = rolFirma === 'jefe_grupo' ? 'aprobada' : 'aprobada_jefe_seccion';
+    const todasFirmas  = await getFirmasDePermiso(permiso.id);
+    // Para Comandantes (num_firmas=2), la firma del jefe_seccion es la firma final
+    const esFinal      = rolFirma === 'jefe_grupo' || (rolFirma === 'jefe_seccion' && permiso.num_firmas === 2);
+    const estadoNuevo  = esFinal ? 'aprobada' : 'aprobada_jefe_seccion';
     const permisoActualizado = {
       ...permiso,
       empleado: permiso.empleado || state.profile,
@@ -576,17 +607,17 @@ async function handleAprobar() {
 
     // Subir PDF con firmas visibles
     btn.textContent = 'Subiendo PDF…';
-    const sufijo  = rolFirma === 'jefe_grupo' ? 'final' : 'jefe_sec';
+    const sufijo  = esFinal ? 'final' : 'jefe_sec';
     const pdfPath = await subirPDF(state.user.id, permiso.id, pdfConFirmas, sufijo);
 
-    // Actualizar estado
-    if (rolFirma === 'jefe_seccion') {
+    // Actualizar estado en Firestore
+    if (esFinal) {
+      await aprobarJefeGrupo(permiso.id, pdfPath);   // guarda en pdf_final_url y estado='aprobada'
+      notificarAprobado(permiso);
+    } else {
       await aprobarJefeSeccion(permiso.id, pdfPath);
       const jefeGrupo = await getJefeGrupo();
       if (jefeGrupo) notificarJefe(jefeGrupo.email, state.profile.nombre_completo, permiso, 'grupo');
-    } else {
-      await aprobarJefeGrupo(permiso.id, pdfPath);
-      notificarAprobado(permiso);
     }
 
     toast('Solicitud aprobada y firmada.', 'success');
@@ -623,7 +654,12 @@ async function handleConfirmarRechazo() {
 
   try {
     if (rolFirma === 'jefe_seccion') {
-      await rechazarJefeSeccion(permiso.id, motivo);
+      // Comandantes: solo 2 firmas → rechazo del jefe_seccion es rechazo final
+      if (permiso.num_firmas === 2) {
+        await rechazarJefeGrupo(permiso.id, motivo);  // estado='rechazada'
+      } else {
+        await rechazarJefeSeccion(permiso.id, motivo);  // estado='rechazada_jefe_seccion'
+      }
     } else {
       await rechazarJefeGrupo(permiso.id, motivo);
     }

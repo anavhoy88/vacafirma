@@ -184,6 +184,9 @@ async function _enriquecerConPerfiles(permisos) {
 // PERMISOS — CRUD
 // ══════════════════════════════════════════════════════════════
 
+// Empleos que solo necesitan 2 firmas (empleado + jefe_seccion)
+const _EMPLEOS_DOS_FIRMAS = new Set(['comandante']);
+
 async function crearPermiso(datos) {
   let jefe_seccion_id = null;
   if (datos.jefe_seccion_email) {
@@ -191,9 +194,13 @@ async function crearPermiso(datos) {
     if (jefe) jefe_seccion_id = jefe.id;
   }
 
+  const empleoLower = (datos.empleo_peticionario || '').trim().toLowerCase();
+  const num_firmas  = _EMPLEOS_DOS_FIRMAS.has(empleoLower) ? 2 : 3;
+
   const permiso = {
     ...datos,
     jefe_seccion_id,
+    num_firmas,
     estado:     'borrador',
     anio:       new Date(datos.fecha_inicio).getFullYear(),
     created_at: serverTimestamp(),
