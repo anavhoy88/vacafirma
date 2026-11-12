@@ -483,10 +483,17 @@ async function handleFirmarYEnviar() {
     const pdfPath = await subirPDF(state.user.id, permiso.id, pdfConFirma, 'empleado');
 
     // 8. Actualizar estado en BD
-    await actualizarTrasFirmaEmpleado(permiso.id, pdfPath);
+    // Si el peticionario es jefe_seccion, su solicitud va directamente al jefe_grupo
+    // (no hay nivel intermedio que apruebe — él mismo es ese nivel)
+    if (rolPeticionario === 'jefe_seccion') {
+      await aprobarJefeSeccion(permiso.id, pdfPath);
+    } else {
+      await actualizarTrasFirmaEmpleado(permiso.id, pdfPath);
+    }
 
-    // 9. Notificar al jefe de sección por email
-    notificarJefe(emailJefe, state.profile.nombre_completo, permiso, 'seccion');
+    // 9. Notificar al jefe (jefe_seccion o jefe_grupo según el caso)
+    notificarJefe(emailJefe, state.profile.nombre_completo, permiso,
+      rolPeticionario === 'jefe_seccion' ? 'grupo' : 'seccion');
 
     toast('Solicitud enviada y firmada correctamente.', 'success');
     mostrarPanel('panelDashboard');
