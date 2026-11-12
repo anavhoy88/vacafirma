@@ -375,6 +375,26 @@ async function getFirmasDePermiso(permisoId) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ══ ADMIN — Gestión de roles y reasignación ══════════════════
+
+async function setRolUsuario(userId, nuevoRol) {
+  await updateDoc(doc(_db, 'user_profiles', userId), { rol: nuevoRol });
+}
+
+// Reasigna jefe_seccion_id en permisos donde quedó null pero el email coincide
+async function reasignarJefeSecciones(emailJefe) {
+  const jefe = await buscarUsuarioPorEmail(emailJefe);
+  if (!jefe) throw new Error('No se encontró usuario con email: ' + emailJefe);
+  const q = query(
+    collection(_db, 'permisos'),
+    where('jefe_seccion_email', '==', emailJefe)
+  );
+  const snap = await getDocs(q);
+  const sinId = snap.docs.filter(d => !d.data().jefe_seccion_id);
+  await Promise.all(sinId.map(d => updateDoc(d.ref, { jefe_seccion_id: jefe.id })));
+  return { jefe_id: jefe.id, actualizados: sinId.length };
+}
+
 // ══ ADMIN — Borrado de permisos ══════════════════════════════
 
 async function eliminarPermiso(permisoId) {
@@ -476,4 +496,6 @@ Object.assign(window, {
   descargarPDF,
   // Admin
   eliminarPermiso,
+  setRolUsuario,
+  reasignarJefeSecciones,
 });

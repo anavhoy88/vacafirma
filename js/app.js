@@ -682,16 +682,10 @@ function notificarJefe(emailJefe, nombreEmpleado, permiso, etapa) {
     `Si no tienes cuenta en VacaFirma, responde a este correo para que el empleado te facilite el acceso.\n\n` +
     `── Mensaje automático de VacaFirma ──`
   );
-  // Intentar abrir cliente de correo
+  // Abrir cliente de correo con location.href (más fiable que window.open o a.click)
   const mailtoLink = `mailto:${emailJefe}?subject=${asunto}&body=${cuerpo}`;
-  const a = document.createElement('a');
-  a.href = mailtoLink;
-  a.target = '_blank';
-  a.click();
-  // Toast informativo para el empleado
-  setTimeout(() => {
-    toast(`📧 Se ha abierto tu cliente de correo para notificar a ${emailJefe}. Si no se abrió, copia el correo manualmente.`, 'info', 7000);
-  }, 500);
+  window.location.href = mailtoLink;
+  toast(`Solicitud enviada. Se ha intentado abrir tu cliente de correo para notificar a ${emailJefe}.`, 'success', 7000);
 }
 
 function notificarAprobado(permiso) {
@@ -766,3 +760,23 @@ function formatFechaHora(isoStr) {
     hour: '2-digit', minute: '2-digit'
   });
 }
+
+// ══════════════════════════════════════════════════════════════
+// HELPERS DE ADMIN — invocables desde la consola del navegador
+// Uso: await vacaAdmin.setRol('jefe_seccion')
+//      await vacaAdmin.reasignarJefe('email@ejemplo.es')
+// ══════════════════════════════════════════════════════════════
+
+window.vacaAdmin = {
+  async setRol(nuevoRol) {
+    if (!state.user) { console.error('No hay sesión activa'); return; }
+    await setRolUsuario(state.user.id, nuevoRol);
+    state.profile.rol = nuevoRol;
+    console.log(`✓ Rol cambiado a "${nuevoRol}" para ${state.user.email}`);
+    console.log('Recarga la página para que surta efecto.');
+  },
+  async reasignarJefe(emailJefe) {
+    const res = await reasignarJefeSecciones(emailJefe);
+    console.log(`✓ Reasignados ${res.actualizados} permisos al jefe ${emailJefe} (id: ${res.jefe_id})`);
+  },
+};
