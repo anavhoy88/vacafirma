@@ -120,7 +120,6 @@ function bindEvents() {
   $('btnConfirmarRechazo') && $('btnConfirmarRechazo').addEventListener('click', handleConfirmarRechazo);
   $('btnCancelarRechazo')  && $('btnCancelarRechazo').addEventListener('click', toggleRechazar);
   $('btnDescargarPDF')   && $('btnDescargarPDF').addEventListener('click', handleDescargarPDF);
-  $('btnDescargarPDF2')  && $('btnDescargarPDF2').addEventListener('click', handleDescargarPDF);
 
   // Formulario cadena de firmantes
   $('btnAnadirFirmante') && $('btnAnadirFirmante').addEventListener('click', () => anadirFirmante());
@@ -775,13 +774,8 @@ function renderDetalle(permiso) {
   }
 
   // ── Botón descargar ───────────────────────────────────────────
-  // El PDF se genera en cliente, siempre disponible si hay permiso abierto
-  const secDescarga = $('seccionDescargaEmpleado');
-  if (secDescarga) secDescarga.style.display = '';
   const btnDescargar = $('btnDescargarPDF');
   if (btnDescargar) btnDescargar.style.display = '';
-  const btnDescargar2 = $('btnDescargarPDF2');
-  if (btnDescargar2) btnDescargar2.style.display = '';
 
   // ── Sección de acción de firma ────────────────────────────────
   const seccionFirma = $('seccionFirmaJefe');
@@ -881,7 +875,10 @@ async function handleAprobar() {
       // Cadena dinámica: avanzar al siguiente firmante
       const { esFinal: yaFinal, siguienteEmail } = await avanzarCadenaFirma(permiso.id, pdfPath);
       if (yaFinal) {
-        notificarAprobado(permiso);
+        notificarAprobadoFirmante(permiso, state.profile.email); // copia al firmante final
+        // notificarAprobado abre mailto al empleado — lo hace la línea de abajo
+        // después de que el navegador haya procesado el primero
+        setTimeout(() => notificarAprobado(permiso), 1500);
       } else if (siguienteEmail) {
         const cadena = permiso.cadena_emails || [];
         const totalFirmantes = cadena.length;
@@ -891,7 +888,8 @@ async function handleAprobar() {
       // Legacy: lógica antigua
       if (esFinal) {
         await aprobarJefeGrupo(permiso.id, pdfPath);
-        notificarAprobado(permiso);
+        notificarAprobadoFirmante(permiso, state.profile.email);
+        setTimeout(() => notificarAprobado(permiso), 1500);
       } else {
         await aprobarJefeSeccion(permiso.id, pdfPath);
         const jefeGrupo = await getJefeGrupo();
@@ -1079,29 +1077,51 @@ function notificarJefe(emailJefe, nombreEmpleado, permiso, etapa) {
   toast(`Solicitud enviada. Se ha intentado abrir tu cliente de correo para notificar a ${emailJefe}.`, 'success', 7000);
 }
 
+function notificarAprobadoFirmante(permiso, emailFirmante) {
+  // Copia de confirmación al último firmante (p.ej. Tcol) de que ha aprobado la solicitud
+  if (!emailFirmante) return;
+  const emp    = permiso.empleado || {};
+  const appUrl = window.location.origin + window.location.pathname;
+  const asunto = encodeURIComponent('[VacaFirma] Solicitud aprobada — copia para el firmante');
+  const cuerpo = encodeURIComponent(
+    `Has aprobado y firmado la siguiente solicitud de permiso:\n\n` +
+    `Interesado: ${emp.nombre_completo || emp.email || '—'}\n` +
+    `Período:    ${formatFecha(permiso.fecha_inicio)} → ${formatFecha(permiso.fecha_fin)}\n` +
+    `Tipo:       ${TIPO_LABELS[permiso.tipo] || permiso.tipo}\n` +
+    `Referencia: ${permiso.id}\n\n` +
+    `La solicitud ha quedado aprobada definitivamente.\n` +
+    `Puedes descargar el documento firmado en VacaFirma:\n${appUrl}\n`
+  );
+  window.location.href = `mailto:${emailFirmante}?subject=${asunto}&body=${cuerpo}`;
+}
+
 function notificarAprobado(permiso) {
   // Notificar al empleado que su solicitud ha sido aprobada completamente
-  const emp = permiso.empleado || {};
+  const emp    = permiso.empleado || {};
   if (!emp.email) return;
+  const appUrl = window.location.origin + window.location.pathname;
   const asunto = encodeURIComponent('[VacaFirma] Tu solicitud ha sido aprobada');
   const cuerpo = encodeURIComponent(
     `Tu solicitud de permiso ha sido aprobada por todos los firmantes.\n\n` +
-    `Período: ${formatFecha(permiso.fecha_inicio)} → ${formatFecha(permiso.fecha_fin)}\n\n` +
-    `Puedes descargar el documento firmado en:\n${window.location.origin}\n`
+    `Período: ${formatFecha(permiso.fecha_inicio)} → ${formatFecha(permiso.fecha_fin)}\n` +
+    `Referencia: ${permiso.id}\n\n` +
+    `Puedes descargar el documento firmado accediendo a VacaFirma:\n${appUrl}\n`
   );
   window.open(`mailto:${emp.email}?subject=${asunto}&body=${cuerpo}`, '_blank');
 }
 
 function notificarRechazo(permiso, motivo, rolFirma) {
-  const emp = permiso.empleado || {};
+  const emp    = permiso.empleado || {};
   if (!emp.email) return;
+  const appUrl       = window.location.origin + window.location.pathname;
   const quienRechaza = rolFirma === 'jefe_grupo' ? 'el Jefe de Grupo' : 'el Jefe de Sección';
   const asunto = encodeURIComponent('[VacaFirma] Tu solicitud ha sido rechazada');
   const cuerpo = encodeURIComponent(
     `Tu solicitud de permiso ha sido rechazada por ${quienRechaza}.\n\n` +
     `Período: ${formatFecha(permiso.fecha_inicio)} → ${formatFecha(permiso.fecha_fin)}\n` +
-    `Motivo: ${motivo}\n\n` +
-    `Puedes acceder a VacaFirma para más detalles:\n${window.location.origin}\n`
+    `Motivo: ${motivo}\n` +
+    `Referencia: ${permiso.id}\n\n` +
+    `Puedes acceder a VacaFirma para más detalles:\n${appUrl}\n`
   );
   window.open(`mailto:${emp.email}?subject=${asunto}&body=${cuerpo}`, '_blank');
 }
