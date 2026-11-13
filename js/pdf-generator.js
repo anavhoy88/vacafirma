@@ -274,6 +274,7 @@ async function generarPDFPermiso(permiso, firmas = []) {
   }
 
   // ── Dibujar filas ─────────────────────────────────────────────
+  console.log('[PDF-GEN] filas a dibujar:', filas.length, filas.map(f => ({label:f.label, tieneFirma:!!f.firma, accion:f.firma?.accion})));
   const FRH = 26;  // altura fila
   const firmasStartY = y;
 
