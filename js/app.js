@@ -954,13 +954,26 @@ async function handleConfirmarRechazo() {
 async function handleDescargarPDF() {
   const permiso = state.permisoActual;
   if (!permiso) return;
-  const ruta = permiso.pdf_final_url || permiso.pdf_url;
-  if (!ruta) { toast('No hay PDF disponible aún.', 'error'); return; }
   try {
-    const url = await getUrlPDF(ruta);
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // Siempre regenerar el PDF con las firmas actuales desde Firestore
+    toast('Generando PDF actualizado…', 'info');
+    const todasFirmas = await getFirmasDePermiso(permiso.id);
+    const permisoCompleto = {
+      ...permiso,
+      empleado: permiso.empleado || state.profile,
+      firmas:   todasFirmas,
+    };
+    const pdfBytes = await generarPDFPermiso(permisoCompleto, todasFirmas);
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `permiso_${permiso.id || 'solicitud'}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
   } catch (err) {
-    toast('Error al obtener el PDF: ' + err.message, 'error');
+    toast('Error al generar el PDF: ' + err.message, 'error');
   }
 }
 

@@ -109,20 +109,20 @@ async function generarPDFPermiso(permiso, firmas = []) {
   txt('7ª Rev. 20/10/2022',                 386, TOP - 52, { size: 6, color: COL.blanco });
 
   txt('FICHA DE SOLICITUD DE PERMISOS AÑO ' + (permiso.anio || new Date().getFullYear()),
-      120, TOP - 18, { size: 11, font: fontBold });
+      30, TOP - 30, { size: 11, font: fontBold });
 
   const emp = permiso.empleado || {};
-  rect(20, TOP - 85, 555, 32, null, COL.gris);
-  txt('EMPLEO:',          25, TOP - 60, { size: 8, font: fontBold });
-  txt(emp.empleo || '',   80, TOP - 60, { size: 8 });
-  txt('DNI:',            260, TOP - 60, { size: 8, font: fontBold });
-  txt(emp.dni || '',     285, TOP - 60, { size: 8 });
-  txt('NOMBRE Y APELLIDOS:', 25, TOP - 75, { size: 8, font: fontBold });
-  txt(emp.nombre_completo || '', 130, TOP - 75, { size: 8 });
-  txt('DEPENDENCIA:', 260, TOP - 75, { size: 8, font: fontBold });
-  txt(emp.dependencia || '', 335, TOP - 75, { size: 8 });
+  rect(20, TOP - 100, 555, 36, null, COL.gris);
+  txt('EMPLEO:',          25, TOP - 70, { size: 8, font: fontBold });
+  txt(emp.empleo || '',   80, TOP - 70, { size: 8 });
+  txt('DNI:',            260, TOP - 70, { size: 8, font: fontBold });
+  txt(emp.dni || '',     285, TOP - 70, { size: 8 });
+  txt('NOMBRE Y APELLIDOS:', 25, TOP - 88, { size: 8, font: fontBold });
+  txt(emp.nombre_completo || '', 130, TOP - 88, { size: 8 });
+  txt('DEPENDENCIA:', 260, TOP - 88, { size: 8, font: fontBold });
+  txt(emp.dependencia || '', 335, TOP - 88, { size: 8 });
 
-  const T_TOP  = TOP - 100;
+  const T_TOP  = TOP - 115;
   const T_LEFT = 20;
   const T_W    = 555;
 
