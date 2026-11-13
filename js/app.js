@@ -960,11 +960,17 @@ async function handleDescargarPDF() {
     console.log('[PDF] Recargando permiso completo. id:', permiso.id);
     const permisoFull = await getPermisoById(permiso.id);
     const todasFirmas = permisoFull.firmas || [];
-    console.log('[PDF] Permiso recargado. firmas:', todasFirmas.length, 'cadena_emails:', permisoFull.cadena_emails);
+    console.log('[PDF] firmas count:', todasFirmas.length);
+    console.log('[PDF] cadena_emails:', permisoFull.cadena_emails);
+    console.log('[PDF] firmas detalle:', JSON.stringify(todasFirmas.map(f => ({
+      rol: f.rol_firma, indice: f.indice_cadena, accion: f.accion, firmado_en: f.firmado_en
+    }))));
+    console.log('[PDF] permiso keys:', Object.keys(permisoFull));
     const permisoCompleto = {
       ...permisoFull,
       empleado: permisoFull.empleado || state.profile,
     };
+    console.log('[PDF] empleado:', JSON.stringify(permisoCompleto.empleado));
     const pdfBytes = await generarPDFPermiso(permisoCompleto, todasFirmas);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url  = URL.createObjectURL(blob);
