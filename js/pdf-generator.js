@@ -1,24 +1,26 @@
 // ═══════════════════════════════════════════════════════════════
 // pdf-generator.js — VacaFirma 2.0
-// Genera el PDF de solicitud de permiso fiel al modelo oficial
-// del Ejército del Aire y del Espacio.
-// Requiere pdf-lib cargado antes en la página.
-// NOTA: TIPO_LABELS y ESTADO_LABELS se definen en app.js (scope global)
+// Layout rediseñado completamente. Coordenadas en puntos PDF.
+// pdf-lib: origen (0,0) = esquina inferior izquierda.
 // ═══════════════════════════════════════════════════════════════
 
-// ── COLORES ───────────────────────────────────────────────────
-const COL = {
-  negro:     [0,   0,   0  ],
-  gris:      [0.4, 0.4, 0.4],
-  grisCelda: [0.95,0.95,0.95],
-  grisCab:   [0.15,0.25,0.45],
-  blanco:    [1,   1,   1  ],
-  verde:     [0.1, 0.5, 0.2],
-  rojo:      [0.7, 0.1, 0.1],
-  amarillo:  [0.6, 0.4, 0.0],
-};
+// Convierte caracteres especiales a ASCII compatible con Helvetica/WinAnsi
+function sanitizePDF(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/[ÀÁÂÃÄÅ]/g,'A').replace(/[àáâãäå]/g,'a')
+    .replace(/[ÈÉÊË]/g,'E').replace(/[èéêë]/g,'e')
+    .replace(/[ÌÍÎÏ]/g,'I').replace(/[ìíîï]/g,'i')
+    .replace(/[ÒÓÔÕÖ]/g,'O').replace(/[òóôõö]/g,'o')
+    .replace(/[ÙÚÛÜ]/g,'U').replace(/[ùúûü]/g,'u')
+    .replace(/Ñ/g,'N').replace(/ñ/g,'n')
+    .replace(/Ç/g,'C').replace(/ç/g,'c')
+    .replace(/[ªº]/g,'.').replace(/[·•]/g,'-')
+    .replace(/[—–]/g,'-').replace(/[""]/g,'"').replace(/['']/g,"'")
+    .replace(/…/g,'...').replace(/✓/g,'OK').replace(/[✗✘]/g,'X')
+    .replace(/[^\x00-\xFF]/g,'?');
+}
 
-// Formateadores de fecha para el PDF (autónomo, no depende de app.js)
 function _fmtFechaPDF(isoStr) {
   if (!isoStr) return '-';
   try {
@@ -26,6 +28,7 @@ function _fmtFechaPDF(isoStr) {
     return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
   } catch(e) { return String(isoStr); }
 }
+
 function _fmtFechaHoraPDF(isoStr) {
   if (!isoStr) return '-';
   try {
@@ -36,298 +39,320 @@ function _fmtFechaHoraPDF(isoStr) {
   } catch(e) { return String(isoStr); }
 }
 
-// Convierte caracteres especiales del español a ASCII compatible con WinAnsi/Helvetica
-function sanitizePDF(str) {
-  if (!str) return str;
-  return String(str)
-    .replace(/À/g,'A').replace(/Á/g,'A').replace(/Â/g,'A').replace(/Ã/g,'A').replace(/Ä/g,'A').replace(/Å/g,'A')
-    .replace(/à/g,'a').replace(/á/g,'a').replace(/â/g,'a').replace(/ã/g,'a').replace(/ä/g,'a').replace(/å/g,'a')
-    .replace(/È/g,'E').replace(/É/g,'E').replace(/Ê/g,'E').replace(/Ë/g,'E')
-    .replace(/è/g,'e').replace(/é/g,'e').replace(/ê/g,'e').replace(/ë/g,'e')
-    .replace(/Ì/g,'I').replace(/Í/g,'I').replace(/Î/g,'I').replace(/Ï/g,'I')
-    .replace(/ì/g,'i').replace(/í/g,'i').replace(/î/g,'i').replace(/ï/g,'i')
-    .replace(/Ò/g,'O').replace(/Ó/g,'O').replace(/Ô/g,'O').replace(/Õ/g,'O').replace(/Ö/g,'O')
-    .replace(/ò/g,'o').replace(/ó/g,'o').replace(/ô/g,'o').replace(/õ/g,'o').replace(/ö/g,'o')
-    .replace(/Ù/g,'U').replace(/Ú/g,'U').replace(/Û/g,'U').replace(/Ü/g,'U')
-    .replace(/ù/g,'u').replace(/ú/g,'u').replace(/û/g,'u').replace(/ü/g,'u')
-    .replace(/Ñ/g,'N').replace(/ñ/g,'n')
-    .replace(/Ç/g,'C').replace(/ç/g,'c')
-    .replace(/ª/g,'a').replace(/º/g,'o')
-    .replace(/·/g,'-').replace(/•/g,'-')
-    .replace(/—/g,'-').replace(/–/g,'-')
-    .replace(/"/g,'"').replace(/"/g,'"').replace(/'/g,"'").replace(/'/g,"'")
-    .replace(/…/g,'...').replace(/✓/g,'[OK]').replace(/✗/g,'[X]').replace(/✘/g,'[X]')
-    .replace(/[^\x00-\xFF]/g,'?');
-}
-
 async function generarPDFPermiso(permiso, firmas = []) {
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
   const doc  = await PDFDocument.create();
+  // A4 en puntos: 595.28 x 841.89
   const page = doc.addPage([595.28, 841.89]);
-  const { width, height } = page.getSize();
+  const W = 595.28;
+  const H = 841.89;
 
-  const fontReg  = await doc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const fReg  = await doc.embedFont(StandardFonts.Helvetica);
+  const fBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  function rgb3(arr) { return rgb(arr[0], arr[1], arr[2]); }
-
-  function rect(x, y, w, h, fill, stroke) {
-    if (fill)   page.drawRectangle({ x, y, width: w, height: h, color: rgb3(fill) });
-    if (stroke) page.drawRectangle({ x, y, width: w, height: h, borderColor: rgb3(stroke), borderWidth: 0.5, color: rgb(1,1,1,0) });
-  }
-
-  function txt(text, x, y, { size = 8, font = fontReg, color = COL.negro, maxWidth } = {}) {
-    if (!text) return;
-    const s = sanitizePDF(String(text));
-    let display = s;
-    if (maxWidth && font.widthOfTextAtSize(s, size) > maxWidth) {
-      let t = s;
-      while (t.length > 1 && font.widthOfTextAtSize(t + '...', size) > maxWidth) {
-        t = t.slice(0, -1);
-      }
-      display = t + '...';
-    }
-    page.drawText(display, { x, y, size, font, color: rgb3(color) });
-  }
-
-  function lineh(x1, y, x2) {
-    page.drawLine({ start: { x: x1, y }, end: { x: x2, y }, thickness: 0.5, color: rgb3(COL.gris) });
-  }
-
-  function linev(x, y1, y2) {
-    page.drawLine({ start: { x, y: y1 }, end: { x, y: y2 }, thickness: 0.5, color: rgb3(COL.gris) });
-  }
-
-  const TOP = height - 20;
-
-  rect(380, TOP - 50, 195, 50, COL.grisCab, null);
-  txt('EJÉRCITO DEL AIRE Y DEL ESPACIO',    386, TOP - 12, { size: 7, font: fontBold, color: COL.blanco });
-  txt('BASE AÉREA DE ALBACETE Y ALA 14',    386, TOP - 22, { size: 7, color: COL.blanco });
-  txt('GRUPO DE FUERZAS AÉREAS',            386, TOP - 32, { size: 7, color: COL.blanco });
-  txt('IG 10-99',                           386, TOP - 42, { size: 7, color: COL.blanco });
-  txt('7ª Rev. 20/10/2022',                 386, TOP - 52, { size: 6, color: COL.blanco });
-
-  txt('FICHA DE SOLICITUD DE PERMISOS AÑO ' + (permiso.anio || new Date().getFullYear()),
-      30, TOP - 30, { size: 11, font: fontBold });
-
-  const emp = permiso.empleado || {};
-  rect(20, TOP - 100, 555, 36, null, COL.gris);
-  txt('EMPLEO:',          25, TOP - 70, { size: 8, font: fontBold });
-  txt(emp.empleo || '',   80, TOP - 70, { size: 8 });
-  txt('DNI:',            260, TOP - 70, { size: 8, font: fontBold });
-  txt(emp.dni || '',     285, TOP - 70, { size: 8 });
-  txt('NOMBRE Y APELLIDOS:', 25, TOP - 88, { size: 8, font: fontBold });
-  txt(emp.nombre_completo || '', 130, TOP - 88, { size: 8 });
-  txt('DEPENDENCIA:', 260, TOP - 88, { size: 8, font: fontBold });
-  txt(emp.dependencia || '', 335, TOP - 88, { size: 8 });
-
-  const T_TOP  = TOP - 115;
-  const T_LEFT = 20;
-  const T_W    = 555;
-
-  const cols = {
-    inicio:    T_LEFT,
-    fin:       T_LEFT + 60,
-    tipo:      T_LEFT + 120,
-    dias:      T_LEFT + 250,
-    dir:       T_LEFT + 290,
-    motivo:    T_LEFT + 430,
-    end:       T_LEFT + T_W,
+  // ── Helpers ──────────────────────────────────────────────────
+  const c = {
+    negro:   rgb(0,    0,    0   ),
+    gris:    rgb(0.5,  0.5,  0.5 ),
+    grisCl:  rgb(0.92, 0.92, 0.92),
+    grisHd:  rgb(0.85, 0.87, 0.91),
+    navy:    rgb(0.13, 0.22, 0.40),
+    blanco:  rgb(1,    1,    1   ),
+    verde:   rgb(0.08, 0.50, 0.18),
+    rojo:    rgb(0.72, 0.10, 0.10),
+    naranja: rgb(0.60, 0.38, 0.00),
+    verdeCl: rgb(0.90, 0.97, 0.90),
+    rojoCl:  rgb(0.99, 0.91, 0.91),
+    grisFilaCl: rgb(0.97, 0.97, 0.97),
   };
 
-  const ROW_H = 16;
+  // Rellena un rectángulo. y = borde SUPERIOR (lo convertimos internamente)
+  function box(x, yTop, w, h, fill, border) {
+    const yPDF = H - yTop - h;  // convertir a coordenadas pdf-lib
+    if (fill)   page.drawRectangle({ x, y: yPDF, width: w, height: h, color: fill });
+    if (border) page.drawRectangle({ x, y: yPDF, width: w, height: h,
+                   borderColor: border, borderWidth: 0.5,
+                   color: rgb(1,1,1,0) });
+  }
 
-  rect(T_LEFT, T_TOP - ROW_H, T_W, ROW_H, COL.grisCab, null);
-  const cabY = T_TOP - ROW_H + 5;
-  txt('FECHA INICIO',  cols.inicio  + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
-  txt('FECHA FIN',     cols.fin     + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
-  txt('TIPO DE PERMISO', cols.tipo  + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
-  txt('DÍAS',          cols.dias    + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
-  txt('DIRECCIÓN / TELÉFONO', cols.dir + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
-  txt('MOTIVO',        cols.motivo  + 3, cabY, { size: 7, font: fontBold, color: COL.blanco });
+  // Dibuja texto. y = posición SUPERIOR de la línea base aprox
+  function t(text, x, yTop, { sz = 8, f = fReg, col = c.negro, maxW } = {}) {
+    const s = sanitizePDF(String(text || ''));
+    if (!s) return;
+    let out = s;
+    if (maxW) {
+      while (out.length > 1 && f.widthOfTextAtSize(out + '...', sz) > maxW) out = out.slice(0,-1);
+      if (out !== s) out += '...';
+    }
+    page.drawText(out, { x, y: H - yTop, size: sz, font: f, color: col });
+  }
 
-  [cols.fin, cols.tipo, cols.dias, cols.dir, cols.motivo, cols.end].forEach(x => {
-    linev(x, T_TOP - ROW_H, T_TOP);
-  });
+  // Línea horizontal. y = posición desde arriba
+  function lh(x1, x2, yTop, col = c.gris) {
+    page.drawLine({ start:{x:x1, y:H-yTop}, end:{x:x2, y:H-yTop},
+                    thickness:0.4, color: col });
+  }
 
-  const ROW_Y = T_TOP - ROW_H * 2;
-  rect(T_LEFT, ROW_Y, T_W, ROW_H, COL.grisCelda, null);
-  const dataY = ROW_Y + 5;
+  // Línea vertical
+  function lv(x, yTop1, yTop2, col = c.gris) {
+    page.drawLine({ start:{x, y:H-yTop1}, end:{x, y:H-yTop2},
+                    thickness:0.4, color: col });
+  }
 
-  const fInicio = _fmtFechaPDF(permiso.fecha_inicio);
-  const fFin    = _fmtFechaPDF(permiso.fecha_fin);
+  // ══════════════════════════════════════════════════════════════
+  // BLOQUE 1 — CABECERA
+  // Zona: y 20..90 (altura 70)
+  // ══════════════════════════════════════════════════════════════
+  const CAB_Y = 20;   // top de la cabecera
+  const CAB_H = 60;
 
-  txt(fInicio,                        cols.inicio  + 3, dataY, { size: 8 });
-  txt(fFin,                           cols.fin     + 3, dataY, { size: 8 });
-  txt(TIPO_LABELS[permiso.tipo] || permiso.tipo,
-                                      cols.tipo    + 3, dataY, { size: 8, maxWidth: 125 });
-  txt(String(permiso.dias_habiles || 1), cols.dias + 3, dataY, { size: 8 });
-  txt((permiso.direccion || '') + (permiso.telefono ? ' · ' + permiso.telefono : ''),
-                                      cols.dir     + 3, dataY, { size: 7, maxWidth: 135 });
-  txt(permiso.motivo || '',           cols.motivo  + 3, dataY, { size: 7, maxWidth: 140 });
+  // Título centrado en la zona izquierda (20..370)
+  const titulo = sanitizePDF('FICHA DE SOLICITUD DE PERMISOS ANO ' + (permiso.anio || new Date().getFullYear()));
+  const tW = fBold.widthOfTextAtSize(titulo, 10);
+  t(titulo, 20 + (350 - tW) / 2, CAB_Y + 36, { sz: 10, f: fBold });
 
-  lineh(T_LEFT, T_TOP, cols.end);
-  lineh(T_LEFT, T_TOP - ROW_H, cols.end);
-  lineh(T_LEFT, ROW_Y, cols.end);
-  lineh(T_LEFT, ROW_Y - ROW_H, cols.end);
-  [cols.inicio, cols.fin, cols.tipo, cols.dias, cols.dir, cols.motivo, cols.end].forEach(x => {
-    linev(x, T_TOP, ROW_Y - ROW_H + ROW_H);
-    linev(x, ROW_Y, ROW_Y - ROW_H);
-  });
+  // Recuadro azul derecha (375..575)
+  box(375, CAB_Y, 200, CAB_H, c.navy, null);
+  t('EJERCITO DEL AIRE Y DEL ESPACIO', 381, CAB_Y + 13, { sz: 6.5, f: fBold, col: c.blanco });
+  t('BASE AEREA DE ALBACETE Y ALA 14', 381, CAB_Y + 24, { sz: 6.5, col: c.blanco });
+  t('GRUPO DE FUERZAS AEREAS',         381, CAB_Y + 35, { sz: 6.5, col: c.blanco });
+  t('IG 10-99',                        381, CAB_Y + 46, { sz: 6.5, col: c.blanco });
+  t('7a Rev. 20/10/2022',              381, CAB_Y + 56, { sz: 5.5, col: c.blanco });
+
+  // Borde exterior cabecera
+  box(20, CAB_Y, 555, CAB_H, null, c.gris);
+
+  // ══════════════════════════════════════════════════════════════
+  // BLOQUE 2 — DATOS PERSONALES
+  // Zona: y 90..130 (altura 40, dos filas de 20)
+  // ══════════════════════════════════════════════════════════════
+  const EMP_Y = CAB_Y + CAB_H + 8;  // 88
+  const EMP_H = 42;
+  const emp = permiso.empleado || {};
+
+  box(20, EMP_Y, 555, EMP_H, null, c.gris);
+
+  // Fila 1
+  t('EMPLEO:',         26, EMP_Y + 14, { sz: 7.5, f: fBold });
+  t(emp.empleo || '-', 76, EMP_Y + 14, { sz: 7.5, maxW: 170 });
+  t('DNI:',           260, EMP_Y + 14, { sz: 7.5, f: fBold });
+  t(emp.dni   || '-', 285, EMP_Y + 14, { sz: 7.5 });
+
+  // Fila 2
+  t('NOMBRE Y APELLIDOS:',         26, EMP_Y + 30, { sz: 7.5, f: fBold });
+  t(emp.nombre_completo || '-',   145, EMP_Y + 30, { sz: 7.5, maxW: 100 });
+  t('DEPENDENCIA:',               260, EMP_Y + 30, { sz: 7.5, f: fBold });
+  t(emp.dependencia || '-',       340, EMP_Y + 30, { sz: 7.5 });
+
+  // Divisor entre filas
+  lh(20, 575, EMP_Y + 20);
+
+  // ══════════════════════════════════════════════════════════════
+  // BLOQUE 3 — TABLA DE DATOS DEL PERMISO
+  // ══════════════════════════════════════════════════════════════
+  const TAB_Y = EMP_Y + EMP_H + 8;  // ≈ 138
+  const TAB_H_CAB = 16;
+  const TAB_H_ROW = 18;
+
+  // Columnas: inicio | fin | tipo | días | dirección/tel | motivo
+  const C0 = 20, C1 = 95, C2 = 165, C3 = 300, C4 = 325, C5 = 460, C6 = 575;
+
+  // Cabecera azul
+  box(C0, TAB_Y, 555, TAB_H_CAB, c.navy, null);
+  const tcy = TAB_Y + 11;
+  t('FECHA INICIO',      C0+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
+  t('FECHA FIN',         C1+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
+  t('TIPO DE PERMISO',   C2+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
+  t('DIAS',              C3+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
+  t('DIRECCION / TEL.',  C4+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
+  t('MOTIVO',            C5+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
+
+  // Fila de datos
+  const DATO_Y = TAB_Y + TAB_H_CAB;
+  box(C0, DATO_Y, 555, TAB_H_ROW, c.grisCl, null);
+  const dy = DATO_Y + 12;
+  t(_fmtFechaPDF(permiso.fecha_inicio),          C0+3, dy, { sz: 7.5 });
+  t(_fmtFechaPDF(permiso.fecha_fin),             C1+3, dy, { sz: 7.5 });
+  t((typeof TIPO_LABELS !== 'undefined' ? TIPO_LABELS[permiso.tipo] : null) || permiso.tipo || '-',
+                                                  C2+3, dy, { sz: 7.5, maxW: 128 });
+  t(String(permiso.dias_habiles || 1),           C3+3, dy, { sz: 7.5 });
+  const dirTel = [permiso.direccion, permiso.telefono].filter(Boolean).join(' · ');
+  t(dirTel,                                       C4+3, dy, { sz: 7, maxW: 130 });
+  t(permiso.motivo || '-',                        C5+3, dy, { sz: 7, maxW: 110 });
+
+  // Bordes tabla
+  const tabBot = DATO_Y + TAB_H_ROW;
+  [C0,C1,C2,C3,C4,C5,C6].forEach(x => lv(x, TAB_Y, tabBot));
+  lh(C0, C6, TAB_Y);
+  lh(C0, C6, DATO_Y);
+  lh(C0, C6, tabBot);
+
+  // ══════════════════════════════════════════════════════════════
+  // BLOQUE 4 — OBSERVACIONES (opcional)
+  // ══════════════════════════════════════════════════════════════
+  let curY = tabBot + 8;
+
+  if (permiso.observaciones) {
+    t('Observaciones:', 26, curY + 10, { sz: 7.5, f: fBold });
+    t(permiso.observaciones, 110, curY + 10, { sz: 7.5, maxW: 450 });
+    curY += 20;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // BLOQUE 5 — ESTADO
+  // ══════════════════════════════════════════════════════════════
+  curY += 4;
+  const EST_H = 20;
+  const estadoStr = (typeof ESTADO_LABELS !== 'undefined' ? ESTADO_LABELS[permiso.estado] : null) || permiso.estado || '';
+  const estadoCol = permiso.estado === 'aprobada' ? c.verde
+                  : (permiso.estado || '').startsWith('rechazada') ? c.rojo
+                  : c.naranja;
+
+  // Borde coloreado
   page.drawRectangle({
-    x: T_LEFT, y: ROW_Y - ROW_H, width: T_W,
-    height: ROW_H * 2 + ROW_H,
-    borderColor: rgb3(COL.gris), borderWidth: 0.7,
+    x: 20, y: H - curY - EST_H, width: 555, height: EST_H,
+    borderColor: estadoCol, borderWidth: 1.2,
     color: rgb(1,1,1,0)
   });
-
-  let curY = ROW_Y - ROW_H - 10;
-  if (permiso.observaciones) {
-    txt('Observaciones:', T_LEFT, curY, { size: 8, font: fontBold });
-    txt(permiso.observaciones, T_LEFT + 80, curY, { size: 8, maxWidth: 470 });
-    curY -= 18;
-  }
-
-  const estadoColor = permiso.estado === 'aprobada'  ? COL.verde
-                    : permiso.estado.startsWith('rechazada') ? COL.rojo
-                    : COL.amarillo;
-  curY -= 5;
-  rect(T_LEFT, curY - 14, T_W, 18, null, estadoColor);
-  txt('Estado:', T_LEFT + 5, curY - 10, { size: 8, font: fontBold, color: estadoColor });
-  txt(ESTADO_LABELS[permiso.estado] || permiso.estado,
-      T_LEFT + 45, curY - 10, { size: 8, font: fontBold, color: estadoColor });
+  t('Estado:', 28, curY + 13, { sz: 8, f: fBold, col: estadoCol });
+  t(estadoStr, 72, curY + 13, { sz: 8, f: fBold, col: estadoCol });
 
   if (permiso.motivo_rechazo) {
-    curY -= 22;
-    txt('Motivo de rechazo: ' + permiso.motivo_rechazo,
-        T_LEFT + 5, curY, { size: 8, color: COL.rojo, maxWidth: 540 });
+    curY += EST_H + 4;
+    t('Motivo de rechazo: ' + permiso.motivo_rechazo, 26, curY + 11, { sz: 7.5, col: c.rojo, maxW: 530 });
+    curY += 16;
+  } else {
+    curY += EST_H;
   }
 
-  curY -= 35;
-  const F_TOP = curY;
+  // ══════════════════════════════════════════════════════════════
+  // BLOQUE 6 — REGISTRO DE FIRMAS ELECTRÓNICAS
+  // ══════════════════════════════════════════════════════════════
+  curY += 10;
+  const FH_CAB = 18;
+  const FH_SUB = 14;  // subencabezado de columnas
+  const FH_ROW = 26;  // altura de cada fila de firma
 
-  rect(T_LEFT, F_TOP, T_W, 16, COL.grisCab, null);
-  txt('REGISTRO DE FIRMAS ELECTRÓNICAS', T_LEFT + 5, F_TOP + 5,
-      { size: 8, font: fontBold, color: COL.blanco });
+  // Cabecera azul
+  box(20, curY, 555, FH_CAB, c.navy, null);
+  t('REGISTRO DE FIRMAS ELECTRONICAS', 26, curY + 13, { sz: 8, f: fBold, col: c.blanco });
+  curY += FH_CAB;
 
-  curY = F_TOP - 16;
+  // Columnas de firmas
+  const FA = 20,   // ROL
+        FB = 110,  // NOMBRE
+        FC = 285,  // DNI
+        FD = 335,  // FECHA/HORA
+        FE = 445,  // RESULTADO
+        FF = 575;
 
-  const FC = {
-    rol:    T_LEFT,
-    nombre: T_LEFT + 90,
-    dni:    T_LEFT + 260,
-    fecha:  T_LEFT + 310,
-    accion: T_LEFT + 410,
-    end:    T_LEFT + T_W,
-  };
+  // Subencabezado gris
+  box(FA, curY, 555, FH_SUB, c.grisHd, null);
+  const shy = curY + 10;
+  t('ROL / CARGO',       FA+4, shy, { sz: 6.5, f: fBold });
+  t('NOMBRE Y APELLIDOS',FB+4, shy, { sz: 6.5, f: fBold });
+  t('DNI',               FC+4, shy, { sz: 6.5, f: fBold });
+  t('FECHA Y HORA',      FD+4, shy, { sz: 6.5, f: fBold });
+  t('RESULTADO',         FE+4, shy, { sz: 6.5, f: fBold });
 
-  rect(T_LEFT, curY - 14, T_W, 14, [0.85, 0.88, 0.92], null);
-  const fcabY = curY - 10;
-  txt('ROL',          FC.rol    + 3, fcabY, { size: 7, font: fontBold });
-  txt('NOMBRE Y APELLIDOS', FC.nombre + 3, fcabY, { size: 7, font: fontBold });
-  txt('DNI',          FC.dni    + 3, fcabY, { size: 7, font: fontBold });
-  txt('FECHA Y HORA', FC.fecha  + 3, fcabY, { size: 7, font: fontBold });
-  txt('RESULTADO',    FC.accion + 3, fcabY, { size: 7, font: fontBold });
+  [FA,FB,FC,FD,FE,FF].forEach(x => lv(x, curY, curY + FH_SUB));
+  lh(FA, FF, curY);
+  lh(FA, FF, curY + FH_SUB);
+  curY += FH_SUB;
 
-  [FC.nombre, FC.dni, FC.fecha, FC.accion, FC.end].forEach(x => {
-    linev(x, curY, curY - 14);
-  });
-  lineh(T_LEFT, curY, FC.end);
-  lineh(T_LEFT, curY - 14, FC.end);
-
-  curY -= 14;
-
-  // Construir lista de filas: empleado siempre primero, luego cadena dinámica o roles legacy
+  // ── Construir filas ─────────────────────────────────────────
   const firmaEmpleado = firmas.find(f => f.rol_firma === 'empleado');
   const firmasCadena  = firmas
     .filter(f => f.rol_firma !== 'empleado')
     .sort((a, b) => (a.indice_cadena ?? 99) - (b.indice_cadena ?? 99));
 
-  // Número total de firmantes = 1 (empleado) + longitud de cadena
-  const cadenaEmails  = permiso.cadena_emails || [];
-  const numFirmantes  = cadenaEmails.length;
+  const cadenaEmails = permiso.cadena_emails || [];
+  const numFirmantes = cadenaEmails.length;
 
-  // Etiquetas para cada posición de la cadena
   function labelCadena(idx, total) {
     if (total === 0) return 'Firmante';
     if (idx === total - 1) return 'Firma final';
-    return `Firmante ${idx + 1}`;
+    return 'Firmante ' + (idx + 1);
   }
 
-  // Fila del empleado
-  const filas = [];
-  filas.push({ label: 'Interesado', firma: firmaEmpleado });
+  const filas = [{ label: 'Interesado', firma: firmaEmpleado }];
 
-  // Filas de la cadena dinámica
   if (numFirmantes > 0) {
     for (let i = 0; i < numFirmantes; i++) {
       const firma = firmasCadena.find(f => f.indice_cadena === i) || null;
       filas.push({ label: labelCadena(i, numFirmantes), firma });
     }
   } else {
-    // Legacy: jefe_seccion + jefe_grupo
+    // Legacy
     ['jefe_seccion', 'jefe_grupo'].forEach(rol => {
-      const labels = { jefe_seccion: 'Jefe de Sección', jefe_grupo: 'Jefe de Grupo' };
+      const labels = { jefe_seccion: 'Jefe de Seccion', jefe_grupo: 'Jefe de Grupo' };
       filas.push({ label: labels[rol], firma: firmas.find(f => f.rol_firma === rol) || null });
     });
   }
 
-  filas.forEach(({ label, firma }) => {
-    const FH = 22;
+  // ── Dibujar cada fila ────────────────────────────────────────
+  filas.forEach(({ label, firma }, idx) => {
+    const fillColor = idx % 2 === 0 ? c.grisFilaCl : c.blanco;
+    box(FA, curY, 555, FH_ROW, fillColor, null);
 
-    const fillColor = firma
-      ? (firma.accion === 'aprobado' ? [0.93, 0.98, 0.93] : [0.99, 0.93, 0.93])
-      : [0.98, 0.98, 0.98];
+    // Centro vertical de la fila
+    const midY = curY + FH_ROW / 2 + 3;
 
-    rect(T_LEFT, curY - FH, T_W, FH, fillColor, null);
-    const fY = curY - FH / 2 - 3;
-
-    txt(label, FC.rol + 3, fY, { size: 8, font: fontBold, maxWidth: 83 });
+    t(label, FA+4, midY, { sz: 7.5, f: fBold, maxW: 86 });
 
     if (firma) {
       const firmante = firma.firmante || {};
-      txt(firmante.nombre_completo || firma.nombre_cert || '',
-          FC.nombre + 3, fY, { size: 8, maxWidth: 165 });
-      txt(firmante.dni || firma.dni_cert || '',
-          FC.dni    + 3, fY, { size: 8 });
-      txt(_fmtFechaHoraPDF(firma.firmado_en),
-          FC.fecha  + 3, fY, { size: 7 });
+      const nombre   = firmante.nombre_completo || firma.nombre_cert || '-';
+      const dni      = firmante.dni || firma.dni_cert || '-';
+      const fechaStr = _fmtFechaHoraPDF(firma.firmado_en);
+      const esOK     = firma.accion === 'aprobado';
 
-      const accionColor = firma.accion === 'aprobado' ? COL.verde : COL.rojo;
-      const accionTxt   = firma.accion === 'aprobado' ? '[OK] APROBADO' : '[X] RECHAZADO';
-      txt(accionTxt, FC.accion + 3, fY, { size: 8, font: fontBold, color: accionColor });
+      t(nombre,   FB+4, midY,   { sz: 7.5, maxW: 170 });
+      t(dni,      FC+4, midY,   { sz: 7.5 });
+      t(fechaStr, FD+4, midY,   { sz: 7, maxW: 106 });
 
+      const resCol = esOK ? c.verde : c.rojo;
+      const resTxt = esOK ? '[OK] APROBADO' : '[X] RECHAZADO';
+      t(resTxt, FE+4, midY, { sz: 7.5, f: fBold, col: resCol });
+
+      // Hash del certificado (línea pequeña debajo si hay espacio)
       if (firma.cert_hash) {
-        txt('Cert: ' + firma.cert_hash.substring(0, 24) + '...',
-            FC.nombre + 3, fY - 10, { size: 6, color: COL.gris });
+        const hashStr = 'Cert: ' + firma.cert_hash.substring(0, 20) + '...';
+        t(hashStr, FB+4, midY + 10, { sz: 5.5, col: c.gris });
       }
     } else {
-      txt('Pendiente de firma', FC.nombre + 3, fY, { size: 8, color: COL.gris });
+      t('Pendiente de firma', FB+4, midY, { sz: 7.5, col: c.gris });
+      t('-',                  FC+4, midY, { sz: 7.5, col: c.gris });
+      t('-',                  FD+4, midY, { sz: 7.5, col: c.gris });
+      t('PENDIENTE',          FE+4, midY, { sz: 7.5, f: fBold, col: c.gris });
     }
 
-    [FC.nombre, FC.dni, FC.fecha, FC.accion, FC.end].forEach(x => {
-      linev(x, curY, curY - FH);
-    });
-    linev(T_LEFT, curY, curY - FH);
-    lineh(T_LEFT, curY,      FC.end);
-    lineh(T_LEFT, curY - FH, FC.end);
+    // Bordes fila
+    [FA,FB,FC,FD,FE,FF].forEach(x => lv(x, curY, curY + FH_ROW));
+    lh(FA, FF, curY);
+    lh(FA, FF, curY + FH_ROW);
 
-    curY -= FH;
+    curY += FH_ROW;
   });
 
+  // Borde exterior sección firmas
+  const firmasTopY = curY - filas.length * FH_ROW - FH_SUB - FH_CAB;
   page.drawRectangle({
-    x: T_LEFT, y: curY, width: T_W,
-    height: F_TOP - curY,
-    borderColor: rgb3(COL.gris), borderWidth: 0.7,
+    x: 20, y: H - curY,
+    width: 555,
+    height: filas.length * FH_ROW + FH_SUB + FH_CAB,
+    borderColor: c.gris, borderWidth: 0.7,
     color: rgb(1,1,1,0)
   });
 
-  const pieY = 25;
-  lineh(T_LEFT, pieY + 14, T_LEFT + T_W);
-  txt('Documento generado electronicamente por VacaFirma - ' + _fmtFechaHoraPDF(new Date().toISOString()),
-      T_LEFT, pieY + 4, { size: 6, color: COL.gris });
-  txt('ID: ' + (permiso.id || ''), T_LEFT + T_W - 220, pieY + 4, { size: 6, color: COL.gris });
+  // ══════════════════════════════════════════════════════════════
+  // PIE DE PÁGINA
+  // ══════════════════════════════════════════════════════════════
+  lh(20, 575, H - 25, c.gris);
+  t('Documento generado electronicamente por VacaFirma · ' + _fmtFechaHoraPDF(new Date().toISOString()),
+    22, H - 18, { sz: 5.5, col: c.gris });
+  t('ID: ' + (permiso.id || '-'), 400, H - 18, { sz: 5.5, col: c.gris });
 
   const pdfBytes = await doc.save();
   return new Uint8Array(pdfBytes);
