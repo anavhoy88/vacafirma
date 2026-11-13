@@ -244,11 +244,13 @@ async function handleGuardarPerfil() {
       empleo,
       dni,
       dependencia,
-      email:         state.user.email,
     };
-    // El rol solo se pone al crear el perfil; después lo asigna el administrador.
-    // (Antes se reenviaba 'empleado' y un jefe que editaba su perfil perdía el rol.)
-    if (!state.profile) datosPerfil.rol = 'empleado';
+    // Rol y correo solo se ponen al crear el perfil; después no se tocan.
+    // (Antes se reenviaba rol 'empleado' y un jefe que editaba su perfil perdía el rol.)
+    if (!state.profile) {
+      datosPerfil.rol   = 'empleado';
+      datosPerfil.email = (state.user.email || '').toLowerCase();
+    }
     const guardado = await createOrUpdateProfile(datosPerfil);
     state.profile = { ...(state.profile || {}), ...guardado };
     actualizarHeaderAuth();
@@ -566,18 +568,24 @@ async function handleFirmarYEnviar() {
   if (tipo === 'permiso_extraordinario' && !motivo) {
     toast('El motivo es obligatorio para permisos extraordinarios.', 'error'); return;
   }
+  const btn = $('btnFirmarEnviar');
+  btn.disabled = true; btn.textContent = 'Comprobando firmantes…';
+
   // Los firmantes tienen que ser jefes registrados (se comprueba antes de firmar).
   for (const email of cadenaEmails) {
+    let error = null;
     if (email.trim().toLowerCase() === (state.user.email || '').toLowerCase()) {
-      toast('No puedes ponerte a ti mismo como firmante.', 'error'); return;
+      error = 'No puedes ponerte a ti mismo como firmante.';
+    } else if (!(await buscarUsuarioPorEmail(email).catch(() => null))) {
+      error = `${email} no es un jefe registrado en VacaFirma.`;
     }
-    if (!(await buscarUsuarioPorEmail(email))) {
-      toast(`${email} no es un jefe registrado en VacaFirma.`, 'error'); return;
+    if (error) {
+      toast(error, 'error');
+      btn.disabled = false; btn.textContent = 'Firmar y enviar';
+      return;
     }
   }
-
-  const btn = $('btnFirmarEnviar');
-  btn.disabled = true; btn.textContent = 'Preparando…';
+  btn.textContent = 'Preparando…';
 
   try {
     // 2. Generar PDF ANTES de crear nada en BD.
@@ -878,7 +886,7 @@ async function handleAprobar() {
     // solicitud: así no se puede hacer firmar al jefe el documento de otra.
     const rutaPDF  = permiso.pdf_url;
     const rutaEsperada = `firestore:${permiso.id}:pdf_b64`;
-    if (rutaPDF !== rutaEsperada) {
+    if (!rutaPDF || (rutaPDF.startsWith('firestore:') && rutaPDF !== rutaEsperada)) {
       throw new Error('El PDF de esta solicitud no es válido. Pide al solicitante que la vuelva a enviar.');
     }
     const pdfBytes = await descargarPDF(rutaPDF);

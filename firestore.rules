@@ -107,17 +107,20 @@ service cloud.firestore {
 
       // ¿Le toca firmar a quien hace la petición?
       function esFirmanteActual() {
-        return datos().get('cadena_ids', null) is list
+        return datos().get('cadena_ids', []) is list
+          && datos().get('cadena_ids', []).size() > 0
           && datos().get('firma_actual_idx', 0) < datos().cadena_ids.size()
           && datos().cadena_ids[datos().get('firma_actual_idx', 0)] == uid()
           && datos().estado in ['firmada_empleado', 'en_cadena', 'aprobada_jefe_seccion'];
       }
 
-      // Solicitudes antiguas sin cadena: jefe de sección y luego jefe de Grupo.
+      // Solicitudes antiguas sin cadena: jefe de sección y luego jefe de Grupo
+      // (o el propio jefe de sección cuando la app le deja dar la aprobación final).
       function esFirmanteLegacy() {
-        return datos().get('cadena_ids', null) == null && (
+        return datos().get('cadena_ids', []).size() == 0 && (
           (datos().estado == 'firmada_empleado' && datos().get('jefe_seccion_id', '') == uid())
-          || (datos().estado == 'aprobada_jefe_seccion' && soyJefeGrupo())
+          || (datos().estado == 'aprobada_jefe_seccion'
+                && (soyJefeGrupo() || datos().get('jefe_seccion_id', '') == uid()))
         );
       }
 
@@ -135,21 +138,29 @@ service cloud.firestore {
           && (!('pdf_final_url' in cambios()) || nuevos().pdf_final_url == rutaPdfFinal());
       }
 
-      // Hasta 4 firmantes, todos jefes y sin incluir al solicitante.
-      function cadenaValida(c) {
-        return c is list && c.size() >= 1 && c.size() <= 4
+      // El firmante i es un jefe y su correo es el que se muestra en la solicitud.
+      function eslabonValido(c, e, i) {
+        return esJefeUid(c[i])
+          && e[i] is string
+          && get(perfilPath(c[i])).data.get('email', '').lower() == e[i].lower();
+      }
+
+      // Hasta 4 firmantes, todos jefes, sin incluir al solicitante.
+      function cadenaValida(c, e) {
+        return c is list && e is list
+          && c.size() >= 1 && c.size() <= 4 && e.size() == c.size()
           && !(uid() in c)
-          && esJefeUid(c[0])
-          && (c.size() < 2 || esJefeUid(c[1]))
-          && (c.size() < 3 || esJefeUid(c[2]))
-          && (c.size() < 4 || esJefeUid(c[3]));
+          && eslabonValido(c, e, 0)
+          && (c.size() < 2 || eslabonValido(c, e, 1))
+          && (c.size() < 3 || eslabonValido(c, e, 2))
+          && (c.size() < 4 || eslabonValido(c, e, 3));
       }
 
       allow get, list: if signedIn() && (
         esPropietario()
         || enCadena()
         || datos().jefe_seccion_id == uid()
-        || soyJefeGrupo()
+        || (soyJefeGrupo() && datos().estado != 'borrador')
       );
 
       // Crear: solo para uno mismo, en borrador, con id generado por Firestore.
@@ -158,10 +169,10 @@ service cloud.firestore {
         && nuevos().empleado_id == uid()
         && nuevos().estado == 'borrador'
         && nuevos().firma_actual_idx == 0
-        && cadenaValida(nuevos().cadena_ids)
-        && nuevos().cadena_emails is list
-        && nuevos().cadena_emails.size() == nuevos().cadena_ids.size()
+        && cadenaValida(nuevos().cadena_ids, nuevos().cadena_emails)
         && nuevos().jefe_seccion_id == nuevos().cadena_ids[0]
+        && !nuevos().keys().hasAny(['pdf_url', 'pdf_final_url', 'pdf_b64', 'pdf_b64_final',
+                                    'motivo_rechazo', 'rechazado_por'])
         && nuevos().num_firmas == nuevos().cadena_ids.size() + 1;
 
       allow update: if signedIn() && rutasPdfValidas() && (
@@ -209,16 +220,18 @@ service cloud.firestore {
         }
 
         function firmanteActualDelPadre() {
-          return padre().get('cadena_ids', null) is list
+          return padre().get('cadena_ids', []) is list
+            && padre().get('cadena_ids', []).size() > 0
             && padre().get('firma_actual_idx', 0) < padre().cadena_ids.size()
             && padre().cadena_ids[padre().get('firma_actual_idx', 0)] == uid()
             && padre().estado in ['firmada_empleado', 'en_cadena', 'aprobada_jefe_seccion'];
         }
 
         function firmanteLegacyDelPadre() {
-          return padre().get('cadena_ids', null) == null && (
+          return padre().get('cadena_ids', []).size() == 0 && (
             (padre().estado == 'firmada_empleado' && padre().get('jefe_seccion_id', '') == uid())
-            || (padre().estado == 'aprobada_jefe_seccion' && soyJefeGrupo())
+            || (padre().estado == 'aprobada_jefe_seccion'
+                  && (soyJefeGrupo() || padre().get('jefe_seccion_id', '') == uid()))
           );
         }
 
