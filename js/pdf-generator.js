@@ -238,15 +238,42 @@ async function generarPDFPermiso(permiso, firmas = []) {
 
   curY -= 14;
 
-  const rolesOrden = ['empleado', 'jefe_seccion', 'jefe_grupo'];
-  const rolLabels  = {
-    empleado:    'Interesado',
-    jefe_seccion:'Jefe de Sección',
-    jefe_grupo:  'Jefe de Grupo',
-  };
+  // Construir lista de filas: empleado siempre primero, luego cadena dinámica o roles legacy
+  const firmaEmpleado = firmas.find(f => f.rol_firma === 'empleado');
+  const firmasCadena  = firmas
+    .filter(f => f.rol_firma !== 'empleado')
+    .sort((a, b) => (a.indice_cadena ?? 99) - (b.indice_cadena ?? 99));
 
-  rolesOrden.forEach(rol => {
-    const firma = firmas.find(f => f.rol_firma === rol);
+  // Número total de firmantes = 1 (empleado) + longitud de cadena
+  const cadenaEmails  = permiso.cadena_emails || [];
+  const numFirmantes  = cadenaEmails.length;
+
+  // Etiquetas para cada posición de la cadena
+  function labelCadena(idx, total) {
+    if (total === 0) return 'Firmante';
+    if (idx === total - 1) return 'Firma final';
+    return `Firmante ${idx + 1}`;
+  }
+
+  // Fila del empleado
+  const filas = [];
+  filas.push({ label: 'Interesado', firma: firmaEmpleado });
+
+  // Filas de la cadena dinámica
+  if (numFirmantes > 0) {
+    for (let i = 0; i < numFirmantes; i++) {
+      const firma = firmasCadena.find(f => f.indice_cadena === i) || null;
+      filas.push({ label: labelCadena(i, numFirmantes), firma });
+    }
+  } else {
+    // Legacy: jefe_seccion + jefe_grupo
+    ['jefe_seccion', 'jefe_grupo'].forEach(rol => {
+      const labels = { jefe_seccion: 'Jefe de Sección', jefe_grupo: 'Jefe de Grupo' };
+      filas.push({ label: labels[rol], firma: firmas.find(f => f.rol_firma === rol) || null });
+    });
+  }
+
+  filas.forEach(({ label, firma }) => {
     const FH = 22;
 
     const fillColor = firma
@@ -256,7 +283,7 @@ async function generarPDFPermiso(permiso, firmas = []) {
     rect(T_LEFT, curY - FH, T_W, FH, fillColor, null);
     const fY = curY - FH / 2 - 3;
 
-    txt(rolLabels[rol], FC.rol + 3, fY, { size: 8, font: fontBold, maxWidth: 83 });
+    txt(label, FC.rol + 3, fY, { size: 8, font: fontBold, maxWidth: 83 });
 
     if (firma) {
       const firmante = firma.firmante || {};

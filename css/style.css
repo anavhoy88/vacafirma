@@ -851,3 +851,29 @@ body {
 .solicitudes-table td:nth-child(6) {
   min-width: 100px;
 }
+
+/* ── Detalle de solicitud ───────────────────────────────────── */
+.detalle-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem 1.5rem;
+}
+.detalle-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.detalle-full {
+  grid-column: 1 / -1;
+}
+.detalle-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #888);
+}
+.detalle-item > span:last-child {
+  font-size: 0.95rem;
+  color: var(--text-main, #1a2e4a);
+}
