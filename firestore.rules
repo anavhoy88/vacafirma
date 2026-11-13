@@ -102,7 +102,7 @@ service cloud.firestore {
       }
 
       function enCadena() {
-        return uid() in datos().cadena_ids;
+        return datos().cadena_ids.hasAny([uid()]);
       }
 
       // ¿Le toca firmar a quien hace la petición?
