@@ -547,7 +547,39 @@ async function handleFirmarYEnviar() {
   btn.disabled = true; btn.textContent = 'Preparando…';
 
   try {
-    // 2. Crear el permiso en la BD (estado borrador) con cadena dinámica
+    // 2. Generar PDF ANTES de crear nada en BD.
+    //    Si AutoFirma falla o el usuario cancela, no queda ningún borrador huérfano.
+    btn.textContent = 'Generando PDF…';
+    const pdfPermiso = {
+      empleado_id:          state.user.id,
+      empleo_peticionario:  state.profile?.empleo || '',
+      tipo,
+      fecha_inicio:         fechaIni,
+      fecha_fin:            fechaFin,
+      dias_habiles:         diasHab,
+      direccion,
+      telefono,
+      motivo,
+      observaciones:        observ,
+      rol_peticionario:     rolPeticionario,
+      cadena_emails:        cadenaEmails,
+      empleado:             state.profile,
+      firmas:               [],
+      // id deliberadamente ausente: se mostrará '-' en el pie del PDF firmado.
+      // Es preferible a crear un borrador que quede huérfano si AutoFirma falla.
+    };
+    state.pdfBytes = await generarPDFPermiso(pdfPermiso, [], { paraFirmar: true });
+
+    // 3. Firmar con AutoFirma (antes de escribir nada en Firestore)
+    btn.textContent = 'Abriendo AutoFirma…';
+    mostrarModalAutofirma();
+    const { pdfFirmado, certInfo } = await firmarConAutofirma(state.pdfBytes, {
+      rol: 'empleado',
+    });
+    ocultarModalAutofirma();
+
+    // 4. AutoFirma OK → ahora sí creamos el permiso en BD
+    btn.textContent = 'Guardando solicitud…';
     const datosPermiso = {
       empleado_id:          state.user.id,
       empleo_peticionario:  state.profile?.empleo || '',
@@ -560,24 +592,10 @@ async function handleFirmarYEnviar() {
       motivo,
       observaciones:        observ,
       rol_peticionario:     rolPeticionario,
-      cadena_emails:        cadenaEmails,   // ← nueva cadena dinámica
+      cadena_emails:        cadenaEmails,
     };
     const permiso = await crearPermiso(datosPermiso);
     state.permisoActual = permiso;
-
-    // 3. Generar PDF
-    btn.textContent = 'Generando PDF…';
-    const pdfPermiso = { ...permiso, empleado: state.profile, firmas: [] };
-    state.pdfBytes   = await generarPDFPermiso(pdfPermiso, [], { paraFirmar: true });
-
-    // 4. Firmar con AutoFirma
-    btn.textContent = 'Abriendo AutoFirma…';
-    mostrarModalAutofirma();
-    const { pdfFirmado, certInfo } = await firmarConAutofirma(state.pdfBytes, {
-      rol:       'empleado',
-      permisoId: permiso.id,
-    });
-    ocultarModalAutofirma();
 
     // 5. Registrar firma criptográfica en Firestore
     btn.textContent = 'Registrando firma…';
@@ -592,15 +610,13 @@ async function handleFirmarYEnviar() {
 
     // 6. Subir el PDF firmado por AutoFirma TAL CUAL.
     //    No se puede regenerar ni modificar después: cualquier cambio invalidaría la firma PAdES.
-    //    Las firmas se ven en el panel de firmas del lector de PDF (Adobe, AutoFirma, VALIDe).
     btn.textContent = 'Subiendo PDF firmado…';
     const pdfPath = await subirPDF(state.user.id, permiso.id, pdfFirmado, 'empleado');
 
-    // 8. Avanzar la cadena — firma_actual_idx pasa a 0 (primer firmante ya listo para recibir)
-    //    La firma del empleado no consume idx; los jefes empiezan desde idx=0.
+    // 7. Avanzar la cadena — firma_actual_idx pasa a 0 (primer firmante ya listo para recibir)
     await actualizarTrasFirmaEmpleado(permiso.id, pdfPath);
 
-    // 9. Notificar al primero de la cadena
+    // 8. Notificar al primero de la cadena
     if (cadenaEmails[0]) {
       notificarFirmante(cadenaEmails[0], state.profile.nombre_completo, permiso, 1, cadenaEmails.length);
     }
@@ -612,9 +628,9 @@ async function handleFirmarYEnviar() {
   } catch (err) {
     ocultarModalAutofirma();
     if (err.code === 'CANCELLED') {
-      toast('Firma cancelada. La solicitud se ha guardado como borrador.', 'warning');
+      toast('Firma cancelada. No se ha guardado ninguna solicitud.', 'warning');
     } else if (err.code === 'CONNECTION_ERROR') {
-      toast('⚠️ AutoFirma no responde. Abre AutoFirma manualmente y vuelve a pulsar "Firmar y enviar".', 'error', 8000);
+      toast('⚠️ AutoFirma no responde. Ábrela manualmente y vuelve a pulsar "Firmar y enviar".', 'error', 8000);
     } else {
       toast('Error: ' + err.message, 'error');
     }
