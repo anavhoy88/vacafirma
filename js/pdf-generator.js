@@ -74,7 +74,7 @@ async function generarPDFPermiso(permiso, firmas = []) {
 
   function strokeRect(x, yT, w, h, color, lw = 0.5) {
     page.drawRectangle({ x, y: PH - yT - h, width: w, height: h,
-      borderColor: color, borderWidth: lw, color: rgb(1,1,1,0) });
+      borderColor: color, borderWidth: lw, opacity: 0 });
   }
 
   // Texto: x = izquierda, yT = distancia desde arriba hasta la LÍNEA BASE del texto
@@ -274,7 +274,6 @@ async function generarPDFPermiso(permiso, firmas = []) {
   }
 
   // ── Dibujar filas ─────────────────────────────────────────────
-  console.log('[PDF-GEN] filas a dibujar:', filas.length, 'y cursor antes firmas:', y, 'PH:', PH, filas.map(f => ({label:f.label, tieneFirma:!!f.firma, accion:f.firma?.accion})));
   const FRH = 26;  // altura fila
   const firmasStartY = y;
 
