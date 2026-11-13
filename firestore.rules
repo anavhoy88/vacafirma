@@ -1,0 +1,252 @@
+rules_version = '2';
+
+// ════════════════════════════════════════════════════════════════
+// Reglas de seguridad de Firestore — VacaFirma
+//
+// La app comprueba permisos en el navegador, pero eso se puede saltar
+// llamando directamente a Firestore. Estas reglas son la protección real:
+//   · Cada persona solo ve sus solicitudes y las que tiene que firmar
+//     (el jefe de Grupo ve las que le llegan por estado).
+//   · Nadie puede cambiarse el rol desde la app: se asigna en la consola.
+//   · Solo el firmante al que le toca puede firmar, rechazar o avanzar
+//     la cadena, y solo con el PDF guardado en la propia solicitud.
+//   · Los firmantes de una solicitud tienen que ser jefes registrados.
+//
+// Cómo aplicarlas: Firebase console → Firestore Database → Reglas →
+// pegar este archivo → probar en "Rules Playground" → Publicar.
+// ════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Utilidades ────────────────────────────────────────────────
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // Valores de rol que se usan (canónicos y antiguos)
+    function rolesJefe() {
+      return ['jefe_seccion', 'Jefe de Sección', 'Jefe de Seccion',
+              'jefe intermedio', 'Jefe Intermedio',
+              'jefe_grupo', 'Jefe de FFAA', 'Jefe de Grupo', 'jefe de grupo'];
+    }
+
+    function rolesJefeGrupo() {
+      return ['jefe_grupo', 'Jefe de FFAA', 'Jefe de Grupo', 'jefe de grupo'];
+    }
+
+    function perfilPath(u) {
+      return /databases/$(database)/documents/user_profiles/$(u);
+    }
+
+    function esJefeUid(u) {
+      return u is string && exists(perfilPath(u))
+        && get(perfilPath(u)).data.get('rol', '') in rolesJefe();
+    }
+
+    function soyJefe() {
+      return signedIn() && esJefeUid(uid());
+    }
+
+    function soyJefeGrupo() {
+      return signedIn() && exists(perfilPath(uid()))
+        && get(perfilPath(uid())).data.get('rol', '') in rolesJefeGrupo();
+    }
+
+    // ── Perfiles ──────────────────────────────────────────────────
+    // Un empleado ve su perfil y los de los jefes (para elegir firmantes).
+    // Un jefe ve también los perfiles de los empleados (datos del PDF).
+    match /user_profiles/{userId} {
+      allow get, list: if signedIn() && (
+        userId == uid()
+        || resource.data.rol in rolesJefe()
+        || soyJefe()
+      );
+
+      // Alta del propio perfil: siempre como empleado y con su propio correo.
+      allow create: if signedIn() && userId == uid()
+        && request.resource.data.get('rol', 'empleado') == 'empleado'
+        && request.resource.data.get('email', '').lower() == request.auth.token.email.lower()
+        && !('activo' in request.resource.data);
+
+      // Edición del propio perfil sin tocar rol, activo ni correo.
+      allow update: if signedIn() && userId == uid()
+        && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['rol', 'activo', 'email']);
+
+      allow delete: if false;
+    }
+
+    // ── Solicitudes de permiso ───────────────────────────────────
+    match /permisos/{permisoId} {
+
+      function datos() {
+        return resource.data;
+      }
+
+      function nuevos() {
+        return request.resource.data;
+      }
+
+      function cambios() {
+        return nuevos().diff(datos()).affectedKeys();
+      }
+
+      function esPropietario() {
+        return datos().empleado_id == uid();
+      }
+
+      function enCadena() {
+        return uid() in datos().cadena_ids;
+      }
+
+      // ¿Le toca firmar a quien hace la petición?
+      function esFirmanteActual() {
+        return datos().get('cadena_ids', null) is list
+          && datos().get('firma_actual_idx', 0) < datos().cadena_ids.size()
+          && datos().cadena_ids[datos().get('firma_actual_idx', 0)] == uid()
+          && datos().estado in ['firmada_empleado', 'en_cadena', 'aprobada_jefe_seccion'];
+      }
+
+      // Solicitudes antiguas sin cadena: jefe de sección y luego jefe de Grupo.
+      function esFirmanteLegacy() {
+        return datos().get('cadena_ids', null) == null && (
+          (datos().estado == 'firmada_empleado' && datos().get('jefe_seccion_id', '') == uid())
+          || (datos().estado == 'aprobada_jefe_seccion' && soyJefeGrupo())
+        );
+      }
+
+      function rutaPdf() {
+        return 'firestore:' + permisoId + ':pdf_b64';
+      }
+
+      function rutaPdfFinal() {
+        return 'firestore:' + permisoId + ':pdf_b64_final';
+      }
+
+      // Los PDF solo pueden apuntar a esta misma solicitud.
+      function rutasPdfValidas() {
+        return (!('pdf_url' in cambios()) || nuevos().pdf_url == rutaPdf())
+          && (!('pdf_final_url' in cambios()) || nuevos().pdf_final_url == rutaPdfFinal());
+      }
+
+      // Hasta 4 firmantes, todos jefes y sin incluir al solicitante.
+      function cadenaValida(c) {
+        return c is list && c.size() >= 1 && c.size() <= 4
+          && !(uid() in c)
+          && esJefeUid(c[0])
+          && (c.size() < 2 || esJefeUid(c[1]))
+          && (c.size() < 3 || esJefeUid(c[2]))
+          && (c.size() < 4 || esJefeUid(c[3]));
+      }
+
+      allow get, list: if signedIn() && (
+        esPropietario()
+        || enCadena()
+        || datos().jefe_seccion_id == uid()
+        || soyJefeGrupo()
+      );
+
+      // Crear: solo para uno mismo, en borrador, con id generado por Firestore.
+      allow create: if signedIn()
+        && permisoId.matches('^[A-Za-z0-9]{20}$')
+        && nuevos().empleado_id == uid()
+        && nuevos().estado == 'borrador'
+        && nuevos().firma_actual_idx == 0
+        && cadenaValida(nuevos().cadena_ids)
+        && nuevos().cadena_emails is list
+        && nuevos().cadena_emails.size() == nuevos().cadena_ids.size()
+        && nuevos().jefe_seccion_id == nuevos().cadena_ids[0]
+        && nuevos().num_firmas == nuevos().cadena_ids.size() + 1;
+
+      allow update: if signedIn() && rutasPdfValidas() && (
+        // El solicitante, mientras la solicitud está en borrador:
+        // sube su PDF firmado y la envía.
+        (esPropietario()
+          && datos().estado == 'borrador'
+          && cambios().hasOnly(['pdf_b64', 'pdf_url', 'estado', 'updated_at'])
+          && nuevos().estado in ['borrador', 'firmada_empleado'])
+        ||
+        // El firmante al que le toca: cofirma, avanza o rechaza.
+        (esFirmanteActual()
+          && cambios().hasOnly(['pdf_b64', 'pdf_b64_final', 'pdf_url', 'pdf_final_url',
+                                'estado', 'firma_actual_idx', 'updated_at',
+                                'motivo_rechazo', 'rechazado_por'])
+          && (!('firma_actual_idx' in cambios())
+                || nuevos().firma_actual_idx == datos().get('firma_actual_idx', 0) + 1)
+          && nuevos().estado in ['firmada_empleado', 'en_cadena', 'aprobada_jefe_seccion',
+                                 'aprobada', 'rechazada', 'rechazada_jefe_seccion']
+          && (nuevos().estado != 'aprobada'
+                || nuevos().firma_actual_idx == datos().cadena_ids.size()))
+        ||
+        // Solicitudes antiguas sin cadena.
+        (esFirmanteLegacy()
+          && cambios().hasOnly(['pdf_b64', 'pdf_b64_final', 'pdf_url', 'pdf_final_url',
+                                'estado', 'updated_at', 'motivo_rechazo', 'rechazado_por'])
+          && nuevos().estado in ['firmada_empleado', 'aprobada_jefe_seccion',
+                                 'rechazada_jefe_seccion', 'aprobada', 'rechazada'])
+      );
+
+      // Borrar: solo el solicitante y solo en borrador.
+      allow delete: if signedIn() && esPropietario() && datos().estado == 'borrador';
+
+      // ── Registro de firmas de cada solicitud ──────────────────
+      match /firmas/{firmaId} {
+        function padre() {
+          return get(/databases/$(database)/documents/permisos/$(permisoId)).data;
+        }
+
+        function puedeVerPadre() {
+          return padre().empleado_id == uid()
+            || (padre().get('cadena_ids', null) is list && uid() in padre().cadena_ids)
+            || padre().get('jefe_seccion_id', '') == uid()
+            || soyJefeGrupo();
+        }
+
+        function firmanteActualDelPadre() {
+          return padre().get('cadena_ids', null) is list
+            && padre().get('firma_actual_idx', 0) < padre().cadena_ids.size()
+            && padre().cadena_ids[padre().get('firma_actual_idx', 0)] == uid()
+            && padre().estado in ['firmada_empleado', 'en_cadena', 'aprobada_jefe_seccion'];
+        }
+
+        function firmanteLegacyDelPadre() {
+          return padre().get('cadena_ids', null) == null && (
+            (padre().estado == 'firmada_empleado' && padre().get('jefe_seccion_id', '') == uid())
+            || (padre().estado == 'aprobada_jefe_seccion' && soyJefeGrupo())
+          );
+        }
+
+        allow get, list: if signedIn() && puedeVerPadre();
+
+        allow create: if signedIn()
+          && request.resource.data.firmante_id == uid()
+          && request.resource.data.permiso_id == permisoId
+          && (
+            // La firma del propio solicitante, antes de enviar la solicitud
+            (padre().empleado_id == uid()
+              && request.resource.data.rol_firma == 'empleado'
+              && padre().estado == 'borrador')
+            || firmanteActualDelPadre()
+            || firmanteLegacyDelPadre()
+          );
+
+        allow update: if false;
+
+        // Solo al borrar un borrador propio.
+        allow delete: if signedIn() && padre().empleado_id == uid()
+          && padre().estado == 'borrador';
+      }
+    }
+
+    // Todo lo demás, cerrado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

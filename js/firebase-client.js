@@ -181,16 +181,40 @@ async function getJefeGrupo() {
   return null;
 }
 
+// Valores de rol (canónicos e históricos) que cuentan como jefe firmante.
+const _ROLES_JEFE = Object.keys(_ROL_CANON).filter(r => _ROL_CANON[r] !== 'empleado');
+
+// Busca un JEFE por su correo. Solo devuelve perfiles con rol de jefe:
+// los firmantes de una solicitud tienen que ser jefes, y las reglas de
+// Firestore solo dejan consultar perfiles de jefe a un empleado.
 async function buscarUsuarioPorEmail(email) {
-  const q = query(
-    collection(_db, 'user_profiles'),
-    where('email', '==', email.trim().toLowerCase())
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  const d = snap.docs[0];
-  const data = d.data();
-  return { id: d.id, ...data, rol: _normalizarRol(data.rol) };
+  const correo = email.trim().toLowerCase();
+  for (const rol of _ROLES_JEFE) {
+    const q = query(
+      collection(_db, 'user_profiles'),
+      where('email', '==', correo),
+      where('rol', '==', rol)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const d = snap.docs[0];
+      const data = d.data();
+      return { id: d.id, ...data, rol: _normalizarRol(data.rol) };
+    }
+  }
+  return null;
+}
+
+// Lee un perfil sin romper la vista si las reglas no permiten verlo.
+async function _leerPerfil(uid) {
+  try {
+    const snap = await getDoc(doc(_db, 'user_profiles', uid));
+    if (!snap.exists()) return null;
+    const d = snap.data();
+    return { id: snap.id, ...d, rol: _normalizarRol(d.rol) };
+  } catch (err) {
+    return null;
+  }
 }
 
 // Helper: enriquece permisos con perfiles de empleado y jefe_sec
@@ -203,11 +227,8 @@ async function _enriquecerConPerfiles(permisos) {
   // Firestore no tiene IN de más de 30 — suficiente para este caso
   const perfiles = {};
   await Promise.all(ids.map(async id => {
-    const snap = await getDoc(doc(_db, 'user_profiles', id));
-    if (snap.exists()) {
-      const d = snap.data();
-      perfiles[id] = { id: snap.id, ...d, rol: _normalizarRol(d.rol) };
-    }
+    const perfil = await _leerPerfil(id);
+    if (perfil) perfiles[id] = perfil;
   }));
   return permisos.map(p => ({
     ...p,
@@ -231,7 +252,8 @@ async function crearPermiso(datos) {
   const cadena_ids = [];
   for (const email of cadena_emails) {
     const usuario = await buscarUsuarioPorEmail(email);
-    cadena_ids.push(usuario ? usuario.id : null);
+    if (!usuario) throw new Error(`${email} no es un jefe registrado en VacaFirma.`);
+    cadena_ids.push(usuario.id);
   }
 
   const num_firmas = cadena_emails.length + 1; // +1 por la firma del empleado
@@ -447,8 +469,8 @@ async function getPermisoById(id) {
 
   const perfiles = {};
   await Promise.all(ids.map(async uid => {
-    const pSnap = await getDoc(doc(_db, 'user_profiles', uid));
-    if (pSnap.exists()) perfiles[uid] = { id: pSnap.id, ...pSnap.data() };
+    const perfil = await _leerPerfil(uid);
+    if (perfil) perfiles[uid] = perfil;
   }));
 
   return {
@@ -530,32 +552,18 @@ async function getFirmasDePermiso(permisoId) {
   const ids = [...new Set(firmas.map(f => f.firmante_id).filter(Boolean))];
   const perfiles = {};
   await Promise.all(ids.map(async uid => {
-    const pSnap = await getDoc(doc(_db, 'user_profiles', uid));
-    if (pSnap.exists()) perfiles[uid] = { id: pSnap.id, ...pSnap.data() };
+    const perfil = await _leerPerfil(uid);
+    if (perfil) perfiles[uid] = perfil;
   }));
   return firmas.map(f => ({ ...f, firmante: perfiles[f.firmante_id] || {} }));
 }
 
 // ══════════════════════════════════════════════════════════════
-// ══ ADMIN — Gestión de roles y reasignación ══════════════════
-
-async function setRolUsuario(userId, nuevoRol) {
-  await updateDoc(doc(_db, 'user_profiles', userId), { rol: nuevoRol });
-}
-
-// Reasigna jefe_seccion_id en permisos donde quedó null pero el email coincide
-async function reasignarJefeSecciones(emailJefe) {
-  const jefe = await buscarUsuarioPorEmail(emailJefe);
-  if (!jefe) throw new Error('No se encontró usuario con email: ' + emailJefe);
-  const q = query(
-    collection(_db, 'permisos'),
-    where('jefe_seccion_email', '==', emailJefe)
-  );
-  const snap = await getDocs(q);
-  const sinId = snap.docs.filter(d => !d.data().jefe_seccion_id);
-  await Promise.all(sinId.map(d => updateDoc(d.ref, { jefe_seccion_id: jefe.id })));
-  return { jefe_id: jefe.id, actualizados: sinId.length };
-}
+// ══ ADMIN — Gestión de roles ══════════════════════════════════
+// Los roles ya no se cambian desde la app: las reglas de Firestore
+// impiden que un usuario modifique su rol o el de otro. Se asignan en
+// Firebase console → Firestore → user_profiles → campo "rol"
+// (empleado | jefe_seccion | jefe_grupo).
 
 // ══ ADMIN — Borrado de permisos ══════════════════════════════
 
@@ -653,14 +661,6 @@ async function establecerContrasena(nuevaContrasena) {
   }
 }
 
-// Admin: cambiar rol a cualquier usuario por email
-async function setRolPorEmail(email, nuevoRol) {
-  const usuario = await buscarUsuarioPorEmail(email);
-  if (!usuario) throw new Error('No se encontró usuario con email: ' + email);
-  await updateDoc(doc(_db, 'user_profiles', usuario.id), { rol: nuevoRol });
-  return { id: usuario.id, email, nuevoRol };
-}
-
 // ══════════════════════════════════════════════════════════════
 // EXPONER FUNCIONES COMO GLOBALES
 // (app.js se carga como script clásico y las llama directamente)
@@ -699,9 +699,6 @@ Object.assign(window, {
   descargarPDF,
   // Admin
   eliminarPermiso,
-  setRolUsuario,
-  setRolPorEmail,
-  reasignarJefeSecciones,
   establecerContrasena,
   usuarioSinContrasena,
 });

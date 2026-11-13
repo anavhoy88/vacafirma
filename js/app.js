@@ -238,15 +238,19 @@ async function handleGuardarPerfil() {
   btn.disabled = true; btn.textContent = 'Guardando…';
 
   try {
-    state.profile = await createOrUpdateProfile({
+    const datosPerfil = {
       id:            state.user.id,
       nombre_completo: nombre,
       empleo,
       dni,
       dependencia,
       email:         state.user.email,
-      rol:           'empleado',
-    });
+    };
+    // El rol solo se pone al crear el perfil; después lo asigna el administrador.
+    // (Antes se reenviaba 'empleado' y un jefe que editaba su perfil perdía el rol.)
+    if (!state.profile) datosPerfil.rol = 'empleado';
+    const guardado = await createOrUpdateProfile(datosPerfil);
+    state.profile = { ...(state.profile || {}), ...guardado };
     actualizarHeaderAuth();
     await cargarDashboard();
     mostrarPanel('panelDashboard');
@@ -267,7 +271,7 @@ state.tabActivo = 'mis';
 async function cargarDashboard() {
   actualizarHeaderAuth();
   const rol = state.profile ? state.profile.rol : 'empleado';
-  console.log('[Dashboard] rol detectado:', rol, '| perfil:', state.profile);
+  console.log('[Dashboard] rol detectado:', rol);
 
   // Badge de rol
   const badge = $('userRoleBadge');
@@ -326,9 +330,30 @@ function cambiarTab(tab) {
   renderTabla();
 }
 
+// Un único manejador de clics para los botones de la tabla.
+// El id de la solicitud viaja en data-id (atributo escapado) y nunca se
+// interpreta como código, a diferencia de un onclick="...('id')" en línea.
+const ACCIONES_TABLA = {
+  ver:      id => abrirDetalle(id),
+  pdf:      id => descargarPDFPermiso(id),
+  eliminar: id => handleEliminarPermiso(id),
+};
+
+function prepararClicsTabla(tbody) {
+  if (tbody.dataset.clicsListos) return;
+  tbody.dataset.clicsListos = '1';
+  tbody.addEventListener('click', ev => {
+    const btn = ev.target.closest('button[data-accion]');
+    if (!btn || !tbody.contains(btn)) return;
+    const accion = ACCIONES_TABLA[btn.dataset.accion];
+    if (accion) accion(btn.dataset.id);
+  });
+}
+
 function renderTabla() {
   const tbody = $('tablaSolicitudes');
   if (!tbody) return;
+  prepararClicsTabla(tbody);
 
   if (!state.permisos.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No hay solicitudes.</td></tr>';
@@ -348,12 +373,12 @@ function renderTabla() {
         <td><span class="badge badge-${esc(p.estado)}">${esc(ESTADO_LABELS[p.estado] || p.estado)}</span></td>
         <td style="white-space:nowrap;">${firmasIconos}</td>
         <td>
-          <button class="btn-sm" onclick="abrirDetalle('${esc(p.id)}')">Ver</button>
+          <button class="btn-sm" data-accion="ver" data-id="${esc(p.id)}">Ver</button>
           ${p.pdf_final_url || p.pdf_url
-            ? `<button class="btn-sm btn-sm-outline" onclick="descargarPDFPermiso('${esc(p.id)}')">PDF</button>`
+            ? `<button class="btn-sm btn-sm-outline" data-accion="pdf" data-id="${esc(p.id)}">PDF</button>`
             : ''}
           ${p.estado === 'borrador'
-            ? `<button class="btn-sm btn-sm-danger" onclick="handleEliminarPermiso('${esc(p.id)}')">✕</button>`
+            ? `<button class="btn-sm btn-sm-danger" data-accion="eliminar" data-id="${esc(p.id)}">✕</button>`
             : ''}
         </td>
       </tr>`;
@@ -540,6 +565,15 @@ async function handleFirmarYEnviar() {
   if (cadenaEmails.length === 0){ toast('Añade al menos un firmante.',    'error'); return; }
   if (tipo === 'permiso_extraordinario' && !motivo) {
     toast('El motivo es obligatorio para permisos extraordinarios.', 'error'); return;
+  }
+  // Los firmantes tienen que ser jefes registrados (se comprueba antes de firmar).
+  for (const email of cadenaEmails) {
+    if (email.trim().toLowerCase() === (state.user.email || '').toLowerCase()) {
+      toast('No puedes ponerte a ti mismo como firmante.', 'error'); return;
+    }
+    if (!(await buscarUsuarioPorEmail(email))) {
+      toast(`${email} no es un jefe registrado en VacaFirma.`, 'error'); return;
+    }
   }
 
   const btn = $('btnFirmarEnviar');
@@ -840,8 +874,13 @@ async function handleAprobar() {
   btn.disabled = true; btn.textContent = 'Abriendo AutoFirma…';
 
   try {
-    // Descargar PDF actual
+    // Descargar PDF actual. Solo se acepta el PDF guardado dentro de ESTA
+    // solicitud: así no se puede hacer firmar al jefe el documento de otra.
     const rutaPDF  = permiso.pdf_url;
+    const rutaEsperada = `firestore:${permiso.id}:pdf_b64`;
+    if (rutaPDF !== rutaEsperada) {
+      throw new Error('El PDF de esta solicitud no es válido. Pide al solicitante que la vuelva a enviar.');
+    }
     const pdfBytes = await descargarPDF(rutaPDF);
 
     // Cofirmar con AutoFirma
@@ -1173,28 +1212,11 @@ function formatFechaHora(isoStr) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// HELPERS DE ADMIN — invocables desde la consola del navegador
-// Uso: await vacaAdmin.setRol('jefe_seccion')
-//      await vacaAdmin.reasignarJefe('email@ejemplo.es')
+// Los roles se asignan en Firebase console → Firestore → user_profiles
+// (campo "rol": empleado | jefe_seccion | jefe_grupo). Las reglas de
+// Firestore impiden cambiarlos desde la app.
 // ══════════════════════════════════════════════════════════════
 
 // Exponer cambiarTab globalmente (usado en onclick del HTML)
 window.cambiarTab = cambiarTab;
 
-window.vacaAdmin = {
-  async setRol(nuevoRol) {
-    if (!state.user) { console.error('No hay sesión activa'); return; }
-    await setRolUsuario(state.user.id, nuevoRol);
-    state.profile.rol = nuevoRol;
-    console.log(`✓ Rol cambiado a "${nuevoRol}" para ${state.user.email}`);
-    console.log('Recarga la página para que surta efecto.');
-  },
-  async setRolEmail(email, nuevoRol) {
-    const res = await setRolPorEmail(email, nuevoRol);
-    console.log(`✓ Rol cambiado a "${nuevoRol}" para ${email} (id: ${res.id})`);
-  },
-  async reasignarJefe(emailJefe) {
-    const res = await reasignarJefeSecciones(emailJefe);
-    console.log(`✓ Reasignados ${res.actualizados} permisos al jefe ${emailJefe} (id: ${res.jefe_id})`);
-  },
-};

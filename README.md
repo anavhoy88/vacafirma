@@ -23,6 +23,25 @@ Empleado → Rellena formulario web → Genera PDF (pdf-lib)
 
 ---
 
+## 🔒 Seguridad (Firebase)
+
+La app usa ahora **Firebase** (Auth + Firestore). Las comprobaciones de permisos que hace la página
+se pueden saltar, así que la protección real son las **reglas de Firestore** de `firestore.rules`:
+
+- Cada persona solo ve sus solicitudes y las que tiene que firmar; el jefe de Grupo ve las que le llegan.
+- Nadie puede cambiarse el rol desde la app.
+- Solo el firmante al que le toca puede firmar, rechazar o avanzar la cadena, y siempre con el PDF de la propia solicitud.
+- Los firmantes tienen que ser jefes registrados.
+
+**Aplicar o actualizar las reglas:** Firebase console → Firestore Database → **Reglas** → pegar
+`firestore.rules` → probar en *Rules Playground* → **Publicar**. (O con la CLI: `firebase deploy --only firestore:rules`.)
+
+**Asignar roles:** Firebase console → Firestore Database → Datos → `user_profiles` → el documento
+de la persona → campo `rol` = `empleado`, `jefe_seccion` o `jefe_grupo`. El jefe de Grupo necesita
+además `activo` = `true` (booleano). Ya no se hace desde la consola del navegador.
+
+---
+
 ## 🚀 Guía de despliegue paso a paso
 
 ### PASO 1 — Crear el proyecto en Supabase
