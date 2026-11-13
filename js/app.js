@@ -955,13 +955,15 @@ async function handleDescargarPDF() {
   const permiso = state.permisoActual;
   if (!permiso) return;
   try {
-    // Siempre regenerar el PDF con las firmas actuales desde Firestore
+    // Recargar siempre el permiso completo + firmas desde Firestore
     toast('Generando PDF actualizado…', 'info');
-    const todasFirmas = await getFirmasDePermiso(permiso.id);
+    console.log('[PDF] Recargando permiso completo. id:', permiso.id);
+    const permisoFull = await getPermisoById(permiso.id);
+    const todasFirmas = permisoFull.firmas || [];
+    console.log('[PDF] Permiso recargado. firmas:', todasFirmas.length, 'cadena_emails:', permisoFull.cadena_emails);
     const permisoCompleto = {
-      ...permiso,
-      empleado: permiso.empleado || state.profile,
-      firmas:   todasFirmas,
+      ...permisoFull,
+      empleado: permisoFull.empleado || state.profile,
     };
     const pdfBytes = await generarPDFPermiso(permisoCompleto, todasFirmas);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
