@@ -342,19 +342,19 @@ function renderTabla() {
     const firmasIconos = renderFirmasCompacto(p);
     return `
       <tr>
-        <td>${emp.nombre_completo || '—'}</td>
+        <td>${esc(emp.nombre_completo || '—')}</td>
         <td>${formatFecha(p.fecha_inicio)}</td>
         <td>${formatFecha(p.fecha_fin)}</td>
-        <td>${TIPO_LABELS[p.tipo] || p.tipo}</td>
-        <td><span class="badge badge-${p.estado}">${ESTADO_LABELS[p.estado] || p.estado}</span></td>
+        <td>${esc(TIPO_LABELS[p.tipo] || p.tipo)}</td>
+        <td><span class="badge badge-${esc(p.estado)}">${esc(ESTADO_LABELS[p.estado] || p.estado)}</span></td>
         <td style="white-space:nowrap;">${firmasIconos}</td>
         <td>
-          <button class="btn-sm" onclick="abrirDetalle('${p.id}')">Ver</button>
+          <button class="btn-sm" onclick="abrirDetalle('${esc(p.id)}')">Ver</button>
           ${p.pdf_final_url || p.pdf_url
-            ? `<button class="btn-sm btn-sm-outline" onclick="descargarPDFPermiso('${p.id}')">PDF</button>`
+            ? `<button class="btn-sm btn-sm-outline" onclick="descargarPDFPermiso('${esc(p.id)}')">PDF</button>`
             : ''}
           ${p.estado === 'borrador'
-            ? `<button class="btn-sm btn-sm-danger" onclick="handleEliminarPermiso('${p.id}')">✕</button>`
+            ? `<button class="btn-sm btn-sm-danger" onclick="handleEliminarPermiso('${esc(p.id)}')">✕</button>`
             : ''}
         </td>
       </tr>`;
@@ -389,7 +389,7 @@ function renderFirmasCompacto(permiso) {
     permiso.cadena_emails.forEach((email, i) => {
       // Buscar si hay firma registrada con índice_cadena === i
       const f = firmas.find(f => f.indice_cadena === i || (f.rol_firma !== 'empleado' && i < idx));
-      const nombre = email.split('@')[0];
+      const nombre = esc(String(email).split('@')[0]);
       if (i < idx) {
         html += ` → <span class="firma-dot aprobado" title="${nombre}: firmado">✓</span>`;
       } else if (i === idx && ['firmada_empleado', 'en_cadena'].includes(permiso.estado)) {
@@ -421,6 +421,20 @@ function renderFirmasCompacto(permiso) {
   }
 
   return html;
+}
+
+// SHA-256 en hexadecimal de unos bytes (huella del PDF firmado que se guarda).
+async function sha256Hex(bytes) {
+  const h = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Escapa texto para insertarlo en HTML (contenido y atributos).
+// Todo dato que venga de Firestore o del usuario debe pasar por aquí antes de ir a innerHTML.
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"'`]/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;',
+  }[c]));
 }
 
 const TIPO_LABELS = {
@@ -471,7 +485,7 @@ function anadirFirmante(email = '') {
     <span style="color:var(--muted,#888);font-size:0.82rem;min-width:1.6rem;text-align:right;">${idx}.</span>
     <input type="email" class="firmante-email"
       placeholder="correo@organismo.es"
-      value="${email}"
+      value="${esc(email)}"
       style="flex:1;padding:0.5rem 0.75rem;border:1px solid var(--border,#ddd);border-radius:6px;font-size:0.9rem;" />
     <button type="button" class="btn-outline btn-rm-firmante"
       title="Eliminar firmante"
@@ -554,7 +568,7 @@ async function handleFirmarYEnviar() {
     // 3. Generar PDF
     btn.textContent = 'Generando PDF…';
     const pdfPermiso = { ...permiso, empleado: state.profile, firmas: [] };
-    state.pdfBytes   = await generarPDFPermiso(pdfPermiso, []);
+    state.pdfBytes   = await generarPDFPermiso(pdfPermiso, [], { paraFirmar: true });
 
     // 4. Firmar con AutoFirma
     btn.textContent = 'Abriendo AutoFirma…';
@@ -567,26 +581,20 @@ async function handleFirmarYEnviar() {
 
     // 5. Registrar firma criptográfica en Firestore
     btn.textContent = 'Registrando firma…';
-    const firmaDoc = await registrarFirma({
+    await registrarFirma({
       permiso_id:  permiso.id,
       firmante_id: state.user.id,
       rol_firma:   'empleado',
       certInfo,
       accion:      'aprobado',
+      pdf_sha256:  await sha256Hex(pdfFirmado),
     });
 
-    // 6. Regenerar PDF con la firma visible
-    btn.textContent = 'Generando PDF firmado…';
-    const permisoConFirma = {
-      ...pdfPermiso,
-      estado: 'firmada_empleado',
-      firmas: [{ ...firmaDoc, firmante: state.profile }],
-    };
-    const pdfConFirma = await generarPDFPermiso(permisoConFirma, permisoConFirma.firmas);
-
-    // 7. Subir PDF a Firestore
-    btn.textContent = 'Subiendo PDF…';
-    const pdfPath = await subirPDF(state.user.id, permiso.id, pdfConFirma, 'empleado');
+    // 6. Subir el PDF firmado por AutoFirma TAL CUAL.
+    //    No se puede regenerar ni modificar después: cualquier cambio invalidaría la firma PAdES.
+    //    Las firmas se ven en el panel de firmas del lector de PDF (Adobe, AutoFirma, VALIDe).
+    btn.textContent = 'Subiendo PDF firmado…';
+    const pdfPath = await subirPDF(state.user.id, permiso.id, pdfFirmado, 'empleado');
 
     // 8. Avanzar la cadena — firma_actual_idx pasa a 0 (primer firmante ya listo para recibir)
     //    La firma del empleado no consume idx; los jefes empiezan desde idx=0.
@@ -640,21 +648,21 @@ function renderDetalle(permiso) {
   if (detalle) {
     detalle.innerHTML = `
       <div class="detalle-grid">
-        <div class="detalle-item"><span class="detalle-label">Interesado</span><span>${emp.nombre_completo || '—'}</span></div>
-        <div class="detalle-item"><span class="detalle-label">Empleo</span><span>${emp.empleo || '—'}</span></div>
-        <div class="detalle-item"><span class="detalle-label">Dependencia</span><span>${emp.dependencia || '—'}</span></div>
-        <div class="detalle-item"><span class="detalle-label">Tipo</span><span>${TIPO_LABELS[permiso.tipo] || permiso.tipo}</span></div>
+        <div class="detalle-item"><span class="detalle-label">Interesado</span><span>${esc(emp.nombre_completo || '—')}</span></div>
+        <div class="detalle-item"><span class="detalle-label">Empleo</span><span>${esc(emp.empleo || '—')}</span></div>
+        <div class="detalle-item"><span class="detalle-label">Dependencia</span><span>${esc(emp.dependencia || '—')}</span></div>
+        <div class="detalle-item"><span class="detalle-label">Tipo</span><span>${esc(TIPO_LABELS[permiso.tipo] || permiso.tipo)}</span></div>
         <div class="detalle-item"><span class="detalle-label">Inicio</span><span>${formatFecha(permiso.fecha_inicio)}</span></div>
         <div class="detalle-item"><span class="detalle-label">Fin</span><span>${formatFecha(permiso.fecha_fin)}</span></div>
-        <div class="detalle-item"><span class="detalle-label">Días hábiles</span><span>${permiso.dias_habiles}</span></div>
-        <div class="detalle-item"><span class="detalle-label">Dirección</span><span>${permiso.direccion || '—'}</span></div>
-        <div class="detalle-item"><span class="detalle-label">Teléfono</span><span>${permiso.telefono || '—'}</span></div>
-        ${permiso.motivo ? `<div class="detalle-item detalle-full"><span class="detalle-label">Motivo</span><span>${permiso.motivo}</span></div>` : ''}
-        ${permiso.observaciones ? `<div class="detalle-item detalle-full"><span class="detalle-label">Observaciones</span><span>${permiso.observaciones}</span></div>` : ''}
+        <div class="detalle-item"><span class="detalle-label">Días hábiles</span><span>${esc(permiso.dias_habiles)}</span></div>
+        <div class="detalle-item"><span class="detalle-label">Dirección</span><span>${esc(permiso.direccion || '—')}</span></div>
+        <div class="detalle-item"><span class="detalle-label">Teléfono</span><span>${esc(permiso.telefono || '—')}</span></div>
+        ${permiso.motivo ? `<div class="detalle-item detalle-full"><span class="detalle-label">Motivo</span><span>${esc(permiso.motivo)}</span></div>` : ''}
+        ${permiso.observaciones ? `<div class="detalle-item detalle-full"><span class="detalle-label">Observaciones</span><span>${esc(permiso.observaciones)}</span></div>` : ''}
         <div class="detalle-item detalle-full"><span class="detalle-label">Estado</span>
-          <span class="badge badge-${permiso.estado}">${ESTADO_LABELS[permiso.estado] || permiso.estado}</span>
+          <span class="badge badge-${esc(permiso.estado)}">${esc(ESTADO_LABELS[permiso.estado] || permiso.estado)}</span>
         </div>
-        ${permiso.motivo_rechazo ? `<div class="detalle-item detalle-full"><span class="detalle-label">Motivo rechazo</span><span class="texto-rojo">${permiso.motivo_rechazo}</span></div>` : ''}
+        ${permiso.motivo_rechazo ? `<div class="detalle-item detalle-full"><span class="detalle-label">Motivo rechazo</span><span class="texto-rojo">${esc(permiso.motivo_rechazo)}</span></div>` : ''}
       </div>
     `;
   }
@@ -671,7 +679,7 @@ function renderDetalle(permiso) {
 
       // Fila 1: firma del empleado (interesado)
       const fEmp = firmas.find(f => f.rol_firma === 'empleado');
-      const empNombre = (permiso.empleado || {}).nombre_completo || '—';
+      const empNombre = esc((permiso.empleado || {}).nombre_completo || '—');
       rows += fEmp
         ? `<div class="firma-row aprobado">
              <span class="firma-dot-lg">✓</span>
@@ -689,7 +697,7 @@ function renderDetalle(permiso) {
         // Buscar si ya firmó: o por índice_cadena o por orden temporal (i < idxActual)
         const yaFirmo = i < idxActual || permiso.estado === 'aprobada';
         const esTurnoActual = i === idxActual && ['firmada_empleado','en_cadena'].includes(permiso.estado);
-        const nombre = email.split('@')[0];
+        const nombre = esc(String(email).split('@')[0]);
         const esFinal = i === cadena.length - 1;
         const etiqueta = esFinal ? 'Firma final' : `Firmante ${i + 1}`;
 
@@ -697,12 +705,12 @@ function renderDetalle(permiso) {
         const fCadena = firmas.find(f => f.indice_cadena === i);
 
         if (yaFirmo && fCadena) {
-          rows += `<div class="firma-row ${fCadena.accion}">
+          rows += `<div class="firma-row ${esc(fCadena.accion)}">
             <span class="firma-dot-lg">${fCadena.accion === 'aprobado' ? '✓' : '✗'}</span>
-            <div><strong>${etiqueta}</strong> · ${fCadena.firmante?.nombre_completo || nombre}
+            <div><strong>${etiqueta}</strong> · ${fCadena.firmante?.nombre_completo ? esc(fCadena.firmante.nombre_completo) : nombre}
               <br><small>${formatFechaHora(fCadena.firmado_en)}</small>
               ${fCadena.accion === 'rechazado' && fCadena.motivo_rechazo
-                ? `<br><small class="texto-rojo">${fCadena.motivo_rechazo}</small>` : ''}
+                ? `<br><small class="texto-rojo">${esc(fCadena.motivo_rechazo)}</small>` : ''}
             </div>
           </div>`;
         } else if (yaFirmo) {
@@ -714,12 +722,12 @@ function renderDetalle(permiso) {
         } else if (esTurnoActual) {
           rows += `<div class="firma-row pendiente" style="border-left:3px solid var(--jade,#2ecc71);">
             <span class="firma-dot-lg" style="color:var(--jade,#2ecc71);">◉</span>
-            <div><strong>${etiqueta}</strong> · ${email}<br><small style="color:var(--jade,#2ecc71);">⟵ Pendiente (turno actual)</small></div>
+            <div><strong>${etiqueta}</strong> · ${esc(email)}<br><small style="color:var(--jade,#2ecc71);">⟵ Pendiente (turno actual)</small></div>
           </div>`;
         } else {
           rows += `<div class="firma-row pendiente" style="opacity:0.6;">
             <span class="firma-dot-lg">○</span>
-            <div><strong>${etiqueta}</strong> · ${email}<br><small>En espera</small></div>
+            <div><strong>${etiqueta}</strong> · ${esc(email)}<br><small>En espera</small></div>
           </div>`;
         }
       });
@@ -739,11 +747,11 @@ function renderDetalle(permiso) {
           <span class="firma-dot-lg">○</span>
           <div><strong>${rolNombres[r]}</strong><br><small>Pendiente de firma</small></div>
         </div>`;
-        return `<div class="firma-row ${f.accion}">
+        return `<div class="firma-row ${esc(f.accion)}">
           <span class="firma-dot-lg">${f.accion === 'aprobado' ? '✓' : '✗'}</span>
-          <div><strong>${rolNombres[r]}</strong>${firmante ? ' · ' + firmante.nombre_completo : ''}
+          <div><strong>${rolNombres[r]}</strong>${firmante ? ' · ' + esc(firmante.nombre_completo) : ''}
             <br><small>${formatFechaHora(f.firmado_en)}</small>
-            ${f.accion === 'rechazado' && f.motivo_rechazo ? `<br><small class="texto-rojo">${f.motivo_rechazo}</small>` : ''}
+            ${f.accion === 'rechazado' && f.motivo_rechazo ? `<br><small class="texto-rojo">${esc(f.motivo_rechazo)}</small>` : ''}
           </div>
         </div>`;
       }).join('');
@@ -836,31 +844,21 @@ async function handleAprobar() {
 
     // Registrar firma en Firestore
     btn.textContent = 'Registrando firma…';
-    const firmaDoc = await registrarFirma({
+    await registrarFirma({
       permiso_id:    permiso.id,
       firmante_id:   state.user.id,
       rol_firma:     rolFirma,
       certInfo,
       accion:        'aprobado',
       indice_cadena: indiceCadena, // null para legacy
+      pdf_sha256:    await sha256Hex(pdfFirmado),
     });
 
-    // Regenerar PDF con todas las firmas visibles
-    btn.textContent = 'Generando PDF firmado…';
-    const todasFirmas = await getFirmasDePermiso(permiso.id);
-    const estadoVisualizacion = esFinal ? 'aprobada' : 'en_cadena';
-    const permisoActualizado  = {
-      ...permiso,
-      empleado: permiso.empleado || state.profile,
-      estado:   estadoVisualizacion,
-      firmas:   todasFirmas,
-    };
-    const pdfConFirmas = await generarPDFPermiso(permisoActualizado, todasFirmas);
-
-    // Subir PDF
-    btn.textContent = 'Subiendo PDF…';
+    // Subir el PDF cofirmado TAL CUAL: conserva la firma del interesado y las de los jefes anteriores.
+    // Regenerarlo borraría todas las firmas PAdES.
+    btn.textContent = 'Subiendo PDF firmado…';
     const sufijo  = esFinal ? 'final' : 'parcial';
-    const pdfPath = await subirPDF(state.user.id, permiso.id, pdfConFirmas, sufijo);
+    const pdfPath = await subirPDF(state.user.id, permiso.id, pdfFirmado, sufijo);
 
     // Avanzar cadena o cerrar legacy
     if (esCadena) {
@@ -957,25 +955,12 @@ async function handleConfirmarRechazo() {
 async function handleDescargarPDF() {
   const permiso = state.permisoActual;
   if (!permiso) return;
-  toast('Generando PDF…', 'info');
   try {
-    // Intentar recargar desde Firestore para tener firmas actualizadas
-    let permisoCompleto = { ...permiso, empleado: permiso.empleado || state.profile };
-    let todasFirmas = permiso.firmas || [];
-
-    try {
-      const permisoFull = await getPermisoById(permiso.id);
-      todasFirmas = permisoFull.firmas || [];
-      permisoCompleto = { ...permisoFull, empleado: permisoFull.empleado || state.profile };
-      console.log('[PDF] Firmas cargadas de Firestore:', todasFirmas.length);
-    } catch (e) {
-      console.warn('[PDF] No se pudo recargar de Firestore, usando datos en memoria:', e.message);
-      // Usar lo que ya tenemos en state
-    }
-
-    console.log('[PDF] Generando con', todasFirmas.length, 'firmas');
-
-    const pdfBytes = await generarPDFPermiso(permisoCompleto, todasFirmas);
+    // Descargar el PDF firmado guardado (no regenerarlo: un PDF regenerado no lleva firmas PAdES).
+    const permisoFull = await getPermisoById(permiso.id);
+    const ruta = permisoFull.pdf_final_url || permisoFull.pdf_url;
+    if (!ruta) { toast('No hay PDF firmado disponible.', 'error'); return; }
+    const pdfBytes = await descargarPDF(ruta);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -985,8 +970,7 @@ async function handleDescargarPDF() {
     a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
   } catch (err) {
-    console.error('[PDF] Error:', err);
-    toast('Error al generar el PDF: ' + err.message, 'error');
+    toast('Error al descargar el PDF: ' + err.message, 'error');
   }
 }
 
@@ -1129,7 +1113,7 @@ function toast(msg, tipo = 'info', duracion = 5000) {
   if (!container) { console.log('[Toast]', msg); return; }
   const t = document.createElement('div');
   t.className = `toast toast-${tipo}`;
-  t.innerHTML = `<span>${msg}</span><button onclick="this.parentElement.remove()">×</button>`;
+  t.innerHTML = `<span>${esc(msg)}</span><button onclick="this.parentElement.remove()">×</button>`;
   container.appendChild(t);
   setTimeout(() => t.remove(), duracion);
 }

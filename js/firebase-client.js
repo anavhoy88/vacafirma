@@ -502,7 +502,7 @@ async function rechazarJefeGrupo(permisoId, motivo) {
 // FIRMAS — registro criptográfico
 // ══════════════════════════════════════════════════════════════
 
-async function registrarFirma({ permiso_id, firmante_id, rol_firma, certInfo, accion, motivo_rechazo, indice_cadena }) {
+async function registrarFirma({ permiso_id, firmante_id, rol_firma, certInfo, accion, motivo_rechazo, indice_cadena, pdf_sha256 }) {
   const firma = {
     permiso_id,
     firmante_id,
@@ -513,6 +513,7 @@ async function registrarFirma({ permiso_id, firmante_id, rol_firma, certInfo, ac
     cert_hash:      certInfo.hash   || '',
     accion,
     motivo_rechazo: motivo_rechazo || null,
+    pdf_sha256:     pdf_sha256 || null,
     firmado_en:     new Date().toISOString(),
     // Índice en la cadena dinámica (null para permisos legacy / firma empleado)
     indice_cadena:  indice_cadena !== undefined && indice_cadena !== null ? indice_cadena : null,

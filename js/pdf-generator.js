@@ -38,7 +38,7 @@ function _fmtFechaHoraPDF(v) {
   } catch(e) { return String(v); }
 }
 
-async function generarPDFPermiso(permiso, firmas = []) {
+async function generarPDFPermiso(permiso, firmas = [], opciones = {}) {
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
   const doc  = await PDFDocument.create();
@@ -301,6 +301,17 @@ async function generarPDFPermiso(permiso, firmas = []) {
       if (firma.cert_hash) {
         txt('Cert: '+firma.cert_hash.substring(0,22)+'...', fc.nombre+4, midTxt+10, {sz:5.5, col:CL.gris});
       }
+    } else if (opciones.paraFirmar) {
+      // PDF preparado para firmar: mostrar quién debe firmar en este hueco
+      const quien = idx === 0
+        ? ((permiso.empleado || {}).nombre_completo || '-')
+        : (cadenaEmails[idx - 1] || '-');
+      const dniInt = idx === 0 ? ((permiso.empleado || {}).dni || '-') : '-';
+      txt(quien,                        fc.nombre+4, midTxt,    {sz:7.5, maxW:164});
+      txt('Firma electrónica PAdES',    fc.nombre+4, midTxt+10, {sz:5.5, col:CL.gris});
+      txt(dniInt,                       fc.dni+4,    midTxt,    {sz:7.5});
+      txt('Ver panel de firmas',        fc.fecha+4,  midTxt,    {sz:7, maxW:106, col:CL.gris});
+      txt('VER FIRMAS',                 fc.result+4, midTxt,    {sz:7.5, f:fB, col:CL.gris});
     } else {
       txt('Pendiente de firma', fc.nombre+4, midTxt, {sz:7.5, col:CL.gris});
       txt('PENDIENTE',          fc.result+4, midTxt, {sz:7.5, f:fB, col:CL.gris});
