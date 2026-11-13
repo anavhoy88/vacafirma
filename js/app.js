@@ -751,10 +751,13 @@ function renderDetalle(permiso) {
   }
 
   // ── Botón descargar ───────────────────────────────────────────
+  // El PDF se genera en cliente, siempre disponible si hay permiso abierto
+  const secDescarga = $('seccionDescargaEmpleado');
+  if (secDescarga) secDescarga.style.display = '';
   const btnDescargar = $('btnDescargarPDF');
-  if (btnDescargar) {
-    btnDescargar.style.display = (permiso.pdf_url || permiso.pdf_final_url) ? '' : 'none';
-  }
+  if (btnDescargar) btnDescargar.style.display = '';
+  const btnDescargar2 = $('btnDescargarPDF2');
+  if (btnDescargar2) btnDescargar2.style.display = '';
 
   // ── Sección de acción de firma ────────────────────────────────
   const seccionFirma = $('seccionFirmaJefe');
