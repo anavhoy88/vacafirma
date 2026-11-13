@@ -362,7 +362,10 @@ async function getPermisosParaFirmante(userId) {
     where('jefe_seccion_id', '==', userId)
   );
 
-  const [snapCadena, snapLegacy] = await Promise.all([getDocs(qCadena), getDocs(qLegacy)]);
+  const [snapCadena, snapLegacy] = await Promise.all([
+    getDocs(qCadena).catch(() => ({ docs: [] })),
+    getDocs(qLegacy).catch(() => ({ docs: [] })),
+  ]);
 
   // Unir y deduplicar
   const docsMap = new Map();

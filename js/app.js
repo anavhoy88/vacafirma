@@ -314,7 +314,7 @@ async function cargarDashboard() {
 
 function cambiarTab(tab) {
   state.tabActivo = tab;
-  state.permisos  = tab === 'pendientes' ? state.permisosPendientes : state.permisosPropios;
+  state.permisos  = (tab === 'pendientes' ? state.permisosPendientes : state.permisosPropios) || [];
   // Estilos de pestañas
   $('tabMisSolicitudes') .classList.toggle('active', tab === 'mis');
   $('tabPendientesFirma').classList.toggle('active', tab === 'pendientes');
