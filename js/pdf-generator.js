@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════════════
 // pdf-generator.js — VacaFirma 2.0
-// Layout rediseñado completamente. Coordenadas en puntos PDF.
-// pdf-lib: origen (0,0) = esquina inferior izquierda.
+// pdf-lib: origen (0,0) = esquina INFERIOR izquierda.
+// Todas las funciones auxiliares trabajan en coordenadas desde
+// la parte SUPERIOR (más natural). Se convierten al llamar a pdf-lib.
 // ═══════════════════════════════════════════════════════════════
 
-// Convierte caracteres especiales a ASCII compatible con Helvetica/WinAnsi
 function sanitizePDF(str) {
   if (!str) return '';
   return String(str)
@@ -17,67 +17,68 @@ function sanitizePDF(str) {
     .replace(/Ç/g,'C').replace(/ç/g,'c')
     .replace(/[ªº]/g,'.').replace(/[·•]/g,'-')
     .replace(/[—–]/g,'-').replace(/[""]/g,'"').replace(/['']/g,"'")
-    .replace(/…/g,'...').replace(/✓/g,'OK').replace(/[✗✘]/g,'X')
+    .replace(/…/g,'...').replace(/[✓]/g,'OK').replace(/[✗✘]/g,'X')
     .replace(/[^\x00-\xFF]/g,'?');
 }
 
-function _fmtFechaPDF(isoStr) {
-  if (!isoStr) return '-';
+function _fmtFechaPDF(v) {
+  if (!v) return '-';
   try {
-    const d = new Date(isoStr + (String(isoStr).includes('T') ? '' : 'T00:00:00'));
-    return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  } catch(e) { return String(isoStr); }
+    const d = new Date(String(v).includes('T') ? v : v + 'T00:00:00');
+    return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric'});
+  } catch(e) { return String(v); }
 }
 
-function _fmtFechaHoraPDF(isoStr) {
-  if (!isoStr) return '-';
+function _fmtFechaHoraPDF(v) {
+  if (!v) return '-';
   try {
-    return new Date(isoStr).toLocaleString('es-ES', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    });
-  } catch(e) { return String(isoStr); }
+    // Firestore Timestamp → tiene .toDate()
+    const d = (v && typeof v.toDate === 'function') ? v.toDate() : new Date(v);
+    return d.toLocaleString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  } catch(e) { return String(v); }
 }
 
 async function generarPDFPermiso(permiso, firmas = []) {
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
   const doc  = await PDFDocument.create();
-  // A4 en puntos: 595.28 x 841.89
-  const page = doc.addPage([595.28, 841.89]);
-  const W = 595.28;
-  const H = 841.89;
+  const PW   = 595.28;
+  const PH   = 841.89;
+  const page = doc.addPage([PW, PH]);
 
-  const fReg  = await doc.embedFont(StandardFonts.Helvetica);
-  const fBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const fR = await doc.embedFont(StandardFonts.Helvetica);
+  const fB = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  // ── Helpers ──────────────────────────────────────────────────
-  const c = {
-    negro:   rgb(0,    0,    0   ),
-    gris:    rgb(0.5,  0.5,  0.5 ),
-    grisCl:  rgb(0.92, 0.92, 0.92),
-    grisHd:  rgb(0.85, 0.87, 0.91),
-    navy:    rgb(0.13, 0.22, 0.40),
-    blanco:  rgb(1,    1,    1   ),
-    verde:   rgb(0.08, 0.50, 0.18),
-    rojo:    rgb(0.72, 0.10, 0.10),
-    naranja: rgb(0.60, 0.38, 0.00),
-    verdeCl: rgb(0.90, 0.97, 0.90),
-    rojoCl:  rgb(0.99, 0.91, 0.91),
-    grisFilaCl: rgb(0.97, 0.97, 0.97),
+  // Colores
+  const CL = {
+    negro:  rgb(0,    0,    0   ),
+    gris:   rgb(0.55, 0.55, 0.55),
+    grisCl: rgb(0.93, 0.93, 0.93),
+    grisHd: rgb(0.84, 0.87, 0.91),
+    navy:   rgb(0.13, 0.22, 0.40),
+    blanco: rgb(1,    1,    1   ),
+    verde:  rgb(0.07, 0.49, 0.17),
+    rojo:   rgb(0.72, 0.09, 0.09),
+    naranja:rgb(0.60, 0.38, 0.00),
+    verdeCl:rgb(0.90, 0.97, 0.90),
+    rojoCl: rgb(0.99, 0.91, 0.91),
+    altRow: rgb(0.96, 0.96, 0.98),
   };
 
-  // Rellena un rectángulo. y = borde SUPERIOR (lo convertimos internamente)
-  function box(x, yTop, w, h, fill, border) {
-    const yPDF = H - yTop - h;  // convertir a coordenadas pdf-lib
-    if (fill)   page.drawRectangle({ x, y: yPDF, width: w, height: h, color: fill });
-    if (border) page.drawRectangle({ x, y: yPDF, width: w, height: h,
-                   borderColor: border, borderWidth: 0.5,
-                   color: rgb(1,1,1,0) });
+  // ── Helpers con coordenadas desde ARRIBA ──────────────────────
+  // yT = distancia desde el borde superior de la página
+
+  function fillRect(x, yT, w, h, color) {
+    page.drawRectangle({ x, y: PH - yT - h, width: w, height: h, color });
   }
 
-  // Dibuja texto. y = posición SUPERIOR de la línea base aprox
-  function t(text, x, yTop, { sz = 8, f = fReg, col = c.negro, maxW } = {}) {
+  function strokeRect(x, yT, w, h, color, lw = 0.5) {
+    page.drawRectangle({ x, y: PH - yT - h, width: w, height: h,
+      borderColor: color, borderWidth: lw, color: rgb(1,1,1,0) });
+  }
+
+  // Texto: x = izquierda, yT = distancia desde arriba hasta la LÍNEA BASE del texto
+  function txt(text, x, yT, { sz = 8, f = fR, col = CL.negro, maxW } = {}) {
     const s = sanitizePDF(String(text || ''));
     if (!s) return;
     let out = s;
@@ -85,275 +86,245 @@ async function generarPDFPermiso(permiso, firmas = []) {
       while (out.length > 1 && f.widthOfTextAtSize(out + '...', sz) > maxW) out = out.slice(0,-1);
       if (out !== s) out += '...';
     }
-    page.drawText(out, { x, y: H - yTop, size: sz, font: f, color: col });
+    page.drawText(out, { x, y: PH - yT, size: sz, font: f, color: col });
   }
 
-  // Línea horizontal. y = posición desde arriba
-  function lh(x1, x2, yTop, col = c.gris) {
-    page.drawLine({ start:{x:x1, y:H-yTop}, end:{x:x2, y:H-yTop},
-                    thickness:0.4, color: col });
+  function hLine(x1, x2, yT, col = CL.gris) {
+    page.drawLine({start:{x:x1,y:PH-yT}, end:{x:x2,y:PH-yT}, thickness:0.4, color:col});
   }
 
-  // Línea vertical
-  function lv(x, yTop1, yTop2, col = c.gris) {
-    page.drawLine({ start:{x, y:H-yTop1}, end:{x, y:H-yTop2},
-                    thickness:0.4, color: col });
+  function vLine(x, yT1, yT2, col = CL.gris) {
+    page.drawLine({start:{x,y:PH-yT1}, end:{x,y:PH-yT2}, thickness:0.4, color:col});
   }
 
-  // ══════════════════════════════════════════════════════════════
-  // BLOQUE 1 — CABECERA
-  // Zona: y 20..90 (altura 70)
-  // ══════════════════════════════════════════════════════════════
-  const CAB_Y = 20;   // top de la cabecera
-  const CAB_H = 60;
-
-  // Título centrado en la zona izquierda (20..370)
-  const titulo = sanitizePDF('FICHA DE SOLICITUD DE PERMISOS ANO ' + (permiso.anio || new Date().getFullYear()));
-  const tW = fBold.widthOfTextAtSize(titulo, 10);
-  t(titulo, 20 + (350 - tW) / 2, CAB_Y + 36, { sz: 10, f: fBold });
-
-  // Recuadro azul derecha (375..575)
-  box(375, CAB_Y, 200, CAB_H, c.navy, null);
-  t('EJERCITO DEL AIRE Y DEL ESPACIO', 381, CAB_Y + 13, { sz: 6.5, f: fBold, col: c.blanco });
-  t('BASE AEREA DE ALBACETE Y ALA 14', 381, CAB_Y + 24, { sz: 6.5, col: c.blanco });
-  t('GRUPO DE FUERZAS AEREAS',         381, CAB_Y + 35, { sz: 6.5, col: c.blanco });
-  t('IG 10-99',                        381, CAB_Y + 46, { sz: 6.5, col: c.blanco });
-  t('7a Rev. 20/10/2022',              381, CAB_Y + 56, { sz: 5.5, col: c.blanco });
-
-  // Borde exterior cabecera
-  box(20, CAB_Y, 555, CAB_H, null, c.gris);
+  // Margen izquierdo y ancho útil
+  const ML = 25, MR = 25;
+  const UW = PW - ML - MR;  // 545 pt
 
   // ══════════════════════════════════════════════════════════════
-  // BLOQUE 2 — DATOS PERSONALES
-  // Zona: y 90..130 (altura 40, dos filas de 20)
+  // BLOQUE 1 — CABECERA  (y: 20 → 80)
   // ══════════════════════════════════════════════════════════════
-  const EMP_Y = CAB_Y + CAB_H + 8;  // 88
-  const EMP_H = 42;
+  let y = 20;  // cursor desde arriba
+
+  // Fondo azul derecho (anchura 195, altura 60)
+  fillRect(PW - MR - 195, y, 195, 60, CL.navy);
+
+  // Texto dentro del recuadro azul (línea base = top + offset desde arriba de la caja)
+  txt('EJERCITO DEL AIRE Y DEL ESPACIO', PW-MR-190, y+13,  {sz:6.5, f:fB, col:CL.blanco});
+  txt('BASE AEREA DE ALBACETE Y ALA 14', PW-MR-190, y+24,  {sz:6.5, col:CL.blanco});
+  txt('GRUPO DE FUERZAS AEREAS',         PW-MR-190, y+35,  {sz:6.5, col:CL.blanco});
+  txt('IG 10-99',                        PW-MR-190, y+46,  {sz:6.5, col:CL.blanco});
+  txt('7a Rev. 20/10/2022',              PW-MR-190, y+56,  {sz:5.5, col:CL.blanco});
+
+  // Título centrado en la zona izquierda
+  const tit = sanitizePDF('FICHA DE SOLICITUD DE PERMISOS ANO ' + (permiso.anio || new Date().getFullYear()));
+  const titW = fB.widthOfTextAtSize(tit, 10);
+  const zonaIzqW = PW - ML - MR - 195 - 10;  // ≈ 325
+  txt(tit, ML + Math.max(0, (zonaIzqW - titW) / 2), y + 36, {sz: 10, f: fB});
+
+  strokeRect(ML, y, UW, 60, CL.gris);
+  y += 60;
+
+  // ══════════════════════════════════════════════════════════════
+  // BLOQUE 2 — DATOS PERSONALES  (y: 80 → 128)
+  // ══════════════════════════════════════════════════════════════
+  y += 6;
   const emp = permiso.empleado || {};
+  const EH  = 42;
 
-  box(20, EMP_Y, 555, EMP_H, null, c.gris);
+  strokeRect(ML, y, UW, EH, CL.gris);
+  hLine(ML, ML+UW, y + 21);  // divisor entre las dos filas
 
-  // Fila 1
-  t('EMPLEO:',         26, EMP_Y + 14, { sz: 7.5, f: fBold });
-  t(emp.empleo || '-', 76, EMP_Y + 14, { sz: 7.5, maxW: 170 });
-  t('DNI:',           260, EMP_Y + 14, { sz: 7.5, f: fBold });
-  t(emp.dni   || '-', 285, EMP_Y + 14, { sz: 7.5 });
+  // Fila 1: empleo + DNI
+  txt('EMPLEO:',          ML+5,  y+14, {sz:7.5, f:fB});
+  txt(emp.empleo||'-',   ML+58,  y+14, {sz:7.5, maxW:155});
+  txt('DNI:',            ML+230, y+14, {sz:7.5, f:fB});
+  txt(emp.dni||'-',      ML+255, y+14, {sz:7.5});
 
-  // Fila 2
-  t('NOMBRE Y APELLIDOS:',         26, EMP_Y + 30, { sz: 7.5, f: fBold });
-  t(emp.nombre_completo || '-',   145, EMP_Y + 30, { sz: 7.5, maxW: 100 });
-  t('DEPENDENCIA:',               260, EMP_Y + 30, { sz: 7.5, f: fBold });
-  t(emp.dependencia || '-',       340, EMP_Y + 30, { sz: 7.5 });
+  // Fila 2: nombre + dependencia
+  txt('NOMBRE Y APELLIDOS:', ML+5,  y+34, {sz:7.5, f:fB});
+  txt(emp.nombre_completo||'-', ML+120, y+34, {sz:7.5, maxW:100});
+  txt('DEPENDENCIA:',    ML+230, y+34, {sz:7.5, f:fB});
+  txt(emp.dependencia||'-', ML+307, y+34, {sz:7.5});
 
-  // Divisor entre filas
-  lh(20, 575, EMP_Y + 20);
-
-  // ══════════════════════════════════════════════════════════════
-  // BLOQUE 3 — TABLA DE DATOS DEL PERMISO
-  // ══════════════════════════════════════════════════════════════
-  const TAB_Y = EMP_Y + EMP_H + 8;  // ≈ 138
-  const TAB_H_CAB = 16;
-  const TAB_H_ROW = 18;
-
-  // Columnas: inicio | fin | tipo | días | dirección/tel | motivo
-  const C0 = 20, C1 = 95, C2 = 165, C3 = 300, C4 = 325, C5 = 460, C6 = 575;
-
-  // Cabecera azul
-  box(C0, TAB_Y, 555, TAB_H_CAB, c.navy, null);
-  const tcy = TAB_Y + 11;
-  t('FECHA INICIO',      C0+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
-  t('FECHA FIN',         C1+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
-  t('TIPO DE PERMISO',   C2+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
-  t('DIAS',              C3+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
-  t('DIRECCION / TEL.',  C4+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
-  t('MOTIVO',            C5+3, tcy, { sz: 6.5, f: fBold, col: c.blanco });
-
-  // Fila de datos
-  const DATO_Y = TAB_Y + TAB_H_CAB;
-  box(C0, DATO_Y, 555, TAB_H_ROW, c.grisCl, null);
-  const dy = DATO_Y + 12;
-  t(_fmtFechaPDF(permiso.fecha_inicio),          C0+3, dy, { sz: 7.5 });
-  t(_fmtFechaPDF(permiso.fecha_fin),             C1+3, dy, { sz: 7.5 });
-  t((typeof TIPO_LABELS !== 'undefined' ? TIPO_LABELS[permiso.tipo] : null) || permiso.tipo || '-',
-                                                  C2+3, dy, { sz: 7.5, maxW: 128 });
-  t(String(permiso.dias_habiles || 1),           C3+3, dy, { sz: 7.5 });
-  const dirTel = [permiso.direccion, permiso.telefono].filter(Boolean).join(' · ');
-  t(dirTel,                                       C4+3, dy, { sz: 7, maxW: 130 });
-  t(permiso.motivo || '-',                        C5+3, dy, { sz: 7, maxW: 110 });
-
-  // Bordes tabla
-  const tabBot = DATO_Y + TAB_H_ROW;
-  [C0,C1,C2,C3,C4,C5,C6].forEach(x => lv(x, TAB_Y, tabBot));
-  lh(C0, C6, TAB_Y);
-  lh(C0, C6, DATO_Y);
-  lh(C0, C6, tabBot);
+  y += EH + 6;
 
   // ══════════════════════════════════════════════════════════════
-  // BLOQUE 4 — OBSERVACIONES (opcional)
+  // BLOQUE 3 — TABLA PERMISO
   // ══════════════════════════════════════════════════════════════
-  let curY = tabBot + 8;
+  const CH = 16, RH = 18;
+  // columnas (posiciones absolutas)
+  const tc = [ML, ML+70, ML+140, ML+280, ML+310, ML+440, ML+UW];
 
+  // Cabecera
+  fillRect(ML, y, UW, CH, CL.navy);
+  const cabLabels = ['FECHA INICIO','FECHA FIN','TIPO DE PERMISO','DIAS','DIRECCION / TEL.','MOTIVO'];
+  cabLabels.forEach((lb, i) => txt(lb, tc[i]+3, y+11, {sz:6, f:fB, col:CL.blanco}));
+  y += CH;
+
+  // Fila datos
+  fillRect(ML, y, UW, RH, CL.grisCl);
+  const tipoLabel = (typeof TIPO_LABELS!=='undefined' && TIPO_LABELS[permiso.tipo]) || permiso.tipo || '-';
+  const dirTel    = [permiso.direccion, permiso.telefono].filter(Boolean).join(' · ');
+  const dataVals  = [
+    _fmtFechaPDF(permiso.fecha_inicio),
+    _fmtFechaPDF(permiso.fecha_fin),
+    tipoLabel,
+    String(permiso.dias_habiles||1),
+    dirTel||'-',
+    permiso.motivo||'-',
+  ];
+  const dataMaxW = [65,65,135,25,125,130];
+  dataVals.forEach((v,i) => txt(v, tc[i]+3, y+12, {sz:7, maxW:dataMaxW[i]}));
+
+  // Bordes
+  tc.forEach(x => vLine(x, y-CH, y+RH));
+  hLine(ML, ML+UW, y-CH);
+  hLine(ML, ML+UW, y);
+  hLine(ML, ML+UW, y+RH);
+  y += RH + 6;
+
+  // ══════════════════════════════════════════════════════════════
+  // BLOQUE 4 — OBSERVACIONES
+  // ══════════════════════════════════════════════════════════════
   if (permiso.observaciones) {
-    t('Observaciones:', 26, curY + 10, { sz: 7.5, f: fBold });
-    t(permiso.observaciones, 110, curY + 10, { sz: 7.5, maxW: 450 });
-    curY += 20;
+    txt('Observaciones:', ML+5, y+10, {sz:7.5, f:fB});
+    txt(permiso.observaciones, ML+90, y+10, {sz:7.5, maxW:445});
+    y += 18;
   }
 
   // ══════════════════════════════════════════════════════════════
   // BLOQUE 5 — ESTADO
   // ══════════════════════════════════════════════════════════════
-  curY += 4;
-  const EST_H = 20;
-  const estadoStr = (typeof ESTADO_LABELS !== 'undefined' ? ESTADO_LABELS[permiso.estado] : null) || permiso.estado || '';
-  const estadoCol = permiso.estado === 'aprobada' ? c.verde
-                  : (permiso.estado || '').startsWith('rechazada') ? c.rojo
-                  : c.naranja;
-
-  // Borde coloreado
-  page.drawRectangle({
-    x: 20, y: H - curY - EST_H, width: 555, height: EST_H,
-    borderColor: estadoCol, borderWidth: 1.2,
-    color: rgb(1,1,1,0)
-  });
-  t('Estado:', 28, curY + 13, { sz: 8, f: fBold, col: estadoCol });
-  t(estadoStr, 72, curY + 13, { sz: 8, f: fBold, col: estadoCol });
+  y += 4;
+  const estadoStr = (typeof ESTADO_LABELS!=='undefined' && ESTADO_LABELS[permiso.estado]) || permiso.estado || '';
+  const estCol    = permiso.estado === 'aprobada' ? CL.verde
+                  : (permiso.estado||'').startsWith('rechazada') ? CL.rojo
+                  : CL.naranja;
+  strokeRect(ML, y, UW, 20, estCol, 1.2);
+  txt('Estado:', ML+6, y+13, {sz:8, f:fB, col:estCol});
+  txt(estadoStr, ML+52, y+13, {sz:8, f:fB, col:estCol});
+  y += 20;
 
   if (permiso.motivo_rechazo) {
-    curY += EST_H + 4;
-    t('Motivo de rechazo: ' + permiso.motivo_rechazo, 26, curY + 11, { sz: 7.5, col: c.rojo, maxW: 530 });
-    curY += 16;
-  } else {
-    curY += EST_H;
+    y += 4;
+    txt('Motivo de rechazo: '+permiso.motivo_rechazo, ML+5, y+10, {sz:7.5, col:CL.rojo, maxW:530});
+    y += 16;
   }
 
   // ══════════════════════════════════════════════════════════════
-  // BLOQUE 6 — REGISTRO DE FIRMAS ELECTRÓNICAS
+  // BLOQUE 6 — REGISTRO DE FIRMAS
   // ══════════════════════════════════════════════════════════════
-  curY += 10;
-  const FH_CAB = 18;
-  const FH_SUB = 14;  // subencabezado de columnas
-  const FH_ROW = 26;  // altura de cada fila de firma
+  y += 10;
 
   // Cabecera azul
-  box(20, curY, 555, FH_CAB, c.navy, null);
-  t('REGISTRO DE FIRMAS ELECTRONICAS', 26, curY + 13, { sz: 8, f: fBold, col: c.blanco });
-  curY += FH_CAB;
+  fillRect(ML, y, UW, 18, CL.navy);
+  txt('REGISTRO DE FIRMAS ELECTRONICAS', ML+5, y+13, {sz:8, f:fB, col:CL.blanco});
+  y += 18;
 
-  // Columnas de firmas
-  const FA = 20,   // ROL
-        FB = 110,  // NOMBRE
-        FC = 285,  // DNI
-        FD = 335,  // FECHA/HORA
-        FE = 445,  // RESULTADO
-        FF = 575;
+  // Subencabezado columnas
+  // ROL(90) | NOMBRE(170) | DNI(55) | FECHA(110) | RESULTADO(120)
+  const fc = {
+    rol:    ML,
+    nombre: ML+90,
+    dni:    ML+260,
+    fecha:  ML+315,
+    result: ML+425,
+    end:    ML+UW,
+  };
 
-  // Subencabezado gris
-  box(FA, curY, 555, FH_SUB, c.grisHd, null);
-  const shy = curY + 10;
-  t('ROL / CARGO',       FA+4, shy, { sz: 6.5, f: fBold });
-  t('NOMBRE Y APELLIDOS',FB+4, shy, { sz: 6.5, f: fBold });
-  t('DNI',               FC+4, shy, { sz: 6.5, f: fBold });
-  t('FECHA Y HORA',      FD+4, shy, { sz: 6.5, f: fBold });
-  t('RESULTADO',         FE+4, shy, { sz: 6.5, f: fBold });
+  fillRect(ML, y, UW, 14, CL.grisHd);
+  txt('ROL / CARGO',        fc.rol+4,    y+10, {sz:6.5, f:fB});
+  txt('NOMBRE Y APELLIDOS', fc.nombre+4, y+10, {sz:6.5, f:fB});
+  txt('DNI',                fc.dni+4,    y+10, {sz:6.5, f:fB});
+  txt('FECHA Y HORA',       fc.fecha+4,  y+10, {sz:6.5, f:fB});
+  txt('RESULTADO',          fc.result+4, y+10, {sz:6.5, f:fB});
 
-  [FA,FB,FC,FD,FE,FF].forEach(x => lv(x, curY, curY + FH_SUB));
-  lh(FA, FF, curY);
-  lh(FA, FF, curY + FH_SUB);
-  curY += FH_SUB;
+  Object.values(fc).forEach(x => vLine(x, y, y+14));
+  hLine(ML, fc.end, y);
+  hLine(ML, fc.end, y+14);
+  y += 14;
 
-  // ── Construir filas ─────────────────────────────────────────
-  const firmaEmpleado = firmas.find(f => f.rol_firma === 'empleado');
-  const firmasCadena  = firmas
+  // ── Construir filas de firma ──────────────────────────────────
+  // La firma del empleado siempre va primero
+  const fEmp = firmas.find(f => f.rol_firma === 'empleado');
+
+  // Firmantes de cadena: ordenar por indice_cadena (comparar como número)
+  const fCadena = firmas
     .filter(f => f.rol_firma !== 'empleado')
-    .sort((a, b) => (a.indice_cadena ?? 99) - (b.indice_cadena ?? 99));
+    .sort((a, b) => Number(a.indice_cadena ?? 99) - Number(b.indice_cadena ?? 99));
 
   const cadenaEmails = permiso.cadena_emails || [];
-  const numFirmantes = cadenaEmails.length;
+  const numFirm      = cadenaEmails.length;
 
-  function labelCadena(idx, total) {
-    if (total === 0) return 'Firmante';
-    if (idx === total - 1) return 'Firma final';
-    return 'Firmante ' + (idx + 1);
-  }
+  const filas = [{ label: 'Interesado', firma: fEmp }];
 
-  const filas = [{ label: 'Interesado', firma: firmaEmpleado }];
-
-  if (numFirmantes > 0) {
-    for (let i = 0; i < numFirmantes; i++) {
-      const firma = firmasCadena.find(f => f.indice_cadena === i) || null;
-      filas.push({ label: labelCadena(i, numFirmantes), firma });
+  if (numFirm > 0) {
+    for (let i = 0; i < numFirm; i++) {
+      // Comparar con == para tolerar string/number
+      const f = fCadena.find(f => Number(f.indice_cadena) === i) || null;
+      const lbl = i === numFirm - 1 ? 'Firma final' : ('Firmante ' + (i+1));
+      filas.push({ label: lbl, firma: f });
     }
   } else {
-    // Legacy
-    ['jefe_seccion', 'jefe_grupo'].forEach(rol => {
-      const labels = { jefe_seccion: 'Jefe de Seccion', jefe_grupo: 'Jefe de Grupo' };
-      filas.push({ label: labels[rol], firma: firmas.find(f => f.rol_firma === rol) || null });
+    // Legado jefe_seccion / jefe_grupo
+    [['jefe_seccion','Jefe de Seccion'],['jefe_grupo','Jefe de Grupo']].forEach(([rol,lbl]) => {
+      filas.push({ label: lbl, firma: firmas.find(f => f.rol_firma === rol) || null });
     });
   }
 
-  // ── Dibujar cada fila ────────────────────────────────────────
+  // ── Dibujar filas ─────────────────────────────────────────────
+  const FRH = 26;  // altura fila
+  const firmasStartY = y;
+
   filas.forEach(({ label, firma }, idx) => {
-    const fillColor = idx % 2 === 0 ? c.grisFilaCl : c.blanco;
-    box(FA, curY, 555, FH_ROW, fillColor, null);
+    // Fondo alterno
+    fillRect(ML, y, UW, FRH, idx%2===0 ? CL.grisCl : CL.blanco);
 
-    // Centro vertical de la fila
-    const midY = curY + FH_ROW / 2 + 3;
+    const midTxt = y + FRH/2 + 3;  // línea base del texto centrado verticalmente
 
-    t(label, FA+4, midY, { sz: 7.5, f: fBold, maxW: 86 });
+    txt(label, fc.rol+4, midTxt, {sz:7.5, f:fB, maxW:84});
 
     if (firma) {
       const firmante = firma.firmante || {};
       const nombre   = firmante.nombre_completo || firma.nombre_cert || '-';
       const dni      = firmante.dni || firma.dni_cert || '-';
-      const fechaStr = _fmtFechaHoraPDF(firma.firmado_en);
+      const fecha    = _fmtFechaHoraPDF(firma.firmado_en);
       const esOK     = firma.accion === 'aprobado';
+      const resCol   = esOK ? CL.verde : CL.rojo;
 
-      t(nombre,   FB+4, midY,   { sz: 7.5, maxW: 170 });
-      t(dni,      FC+4, midY,   { sz: 7.5 });
-      t(fechaStr, FD+4, midY,   { sz: 7, maxW: 106 });
+      txt(nombre,            fc.nombre+4, midTxt,   {sz:7.5, maxW:164});
+      txt(dni,               fc.dni+4,   midTxt,   {sz:7.5});
+      txt(fecha,             fc.fecha+4, midTxt,   {sz:7, maxW:106});
+      txt(esOK?'[OK] APROBADO':'[X] RECHAZADO', fc.result+4, midTxt, {sz:7.5, f:fB, col:resCol});
 
-      const resCol = esOK ? c.verde : c.rojo;
-      const resTxt = esOK ? '[OK] APROBADO' : '[X] RECHAZADO';
-      t(resTxt, FE+4, midY, { sz: 7.5, f: fBold, col: resCol });
-
-      // Hash del certificado (línea pequeña debajo si hay espacio)
       if (firma.cert_hash) {
-        const hashStr = 'Cert: ' + firma.cert_hash.substring(0, 20) + '...';
-        t(hashStr, FB+4, midY + 10, { sz: 5.5, col: c.gris });
+        txt('Cert: '+firma.cert_hash.substring(0,22)+'...', fc.nombre+4, midTxt+10, {sz:5.5, col:CL.gris});
       }
     } else {
-      t('Pendiente de firma', FB+4, midY, { sz: 7.5, col: c.gris });
-      t('-',                  FC+4, midY, { sz: 7.5, col: c.gris });
-      t('-',                  FD+4, midY, { sz: 7.5, col: c.gris });
-      t('PENDIENTE',          FE+4, midY, { sz: 7.5, f: fBold, col: c.gris });
+      txt('Pendiente de firma', fc.nombre+4, midTxt, {sz:7.5, col:CL.gris});
+      txt('PENDIENTE',          fc.result+4, midTxt, {sz:7.5, f:fB, col:CL.gris});
     }
 
     // Bordes fila
-    [FA,FB,FC,FD,FE,FF].forEach(x => lv(x, curY, curY + FH_ROW));
-    lh(FA, FF, curY);
-    lh(FA, FF, curY + FH_ROW);
+    Object.values(fc).forEach(x => vLine(x, y, y+FRH));
+    hLine(ML, fc.end, y);
+    hLine(ML, fc.end, y+FRH);
 
-    curY += FH_ROW;
+    y += FRH;
   });
 
-  // Borde exterior sección firmas
-  const firmasTopY = curY - filas.length * FH_ROW - FH_SUB - FH_CAB;
-  page.drawRectangle({
-    x: 20, y: H - curY,
-    width: 555,
-    height: filas.length * FH_ROW + FH_SUB + FH_CAB,
-    borderColor: c.gris, borderWidth: 0.7,
-    color: rgb(1,1,1,0)
-  });
+  // Borde exterior bloque firmas
+  strokeRect(ML, firmasStartY - 32, UW, 32 + filas.length*FRH, CL.gris, 0.7);
 
   // ══════════════════════════════════════════════════════════════
   // PIE DE PÁGINA
   // ══════════════════════════════════════════════════════════════
-  lh(20, 575, H - 25, c.gris);
-  t('Documento generado electronicamente por VacaFirma · ' + _fmtFechaHoraPDF(new Date().toISOString()),
-    22, H - 18, { sz: 5.5, col: c.gris });
-  t('ID: ' + (permiso.id || '-'), 400, H - 18, { sz: 5.5, col: c.gris });
+  const pieY = PH - 22;
+  hLine(ML, ML+UW, PH - 28, CL.gris);
+  txt('Documento generado electronicamente por VacaFirma · ' + _fmtFechaHoraPDF(new Date().toISOString()),
+      ML, PH-18, {sz:5.5, col:CL.gris});
+  txt('ID: '+(permiso.id||'-'), ML+UW-170, PH-18, {sz:5.5, col:CL.gris});
 
-  const pdfBytes = await doc.save();
-  return new Uint8Array(pdfBytes);
+  return new Uint8Array(await doc.save());
 }
