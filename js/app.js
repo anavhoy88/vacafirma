@@ -954,25 +954,24 @@ async function handleConfirmarRechazo() {
 async function handleDescargarPDF() {
   const permiso = state.permisoActual;
   if (!permiso) return;
+  toast('Generando PDF…', 'info');
   try {
-    // Recargar siempre el permiso completo + firmas desde Firestore
-    toast('Generando PDF actualizado…', 'info');
-    console.log('[PDF] Recargando permiso completo. id:', permiso.id);
-    const permisoFull = await getPermisoById(permiso.id);
-    const todasFirmas = permisoFull.firmas || [];
-    const debugMsg = [
-      'ID: ' + permisoFull.id,
-      'Firmas: ' + todasFirmas.length,
-      'cadena_emails: ' + JSON.stringify(permisoFull.cadena_emails),
-      'firmas: ' + JSON.stringify(todasFirmas.map(f => ({rol:f.rol_firma, idx:f.indice_cadena, accion:f.accion}))),
-      'empleado: ' + JSON.stringify((permisoFull.empleado||{}).nombre_completo),
-    ].join('\n');
-    toast('DEBUG: ' + debugMsg.substring(0,120), 'info');
-    console.log('[PDF DEBUG]\n' + debugMsg);
-    const permisoCompleto = {
-      ...permisoFull,
-      empleado: permisoFull.empleado || state.profile,
-    };
+    // Intentar recargar desde Firestore para tener firmas actualizadas
+    let permisoCompleto = { ...permiso, empleado: permiso.empleado || state.profile };
+    let todasFirmas = permiso.firmas || [];
+
+    try {
+      const permisoFull = await getPermisoById(permiso.id);
+      todasFirmas = permisoFull.firmas || [];
+      permisoCompleto = { ...permisoFull, empleado: permisoFull.empleado || state.profile };
+      console.log('[PDF] Firmas cargadas de Firestore:', todasFirmas.length);
+    } catch (e) {
+      console.warn('[PDF] No se pudo recargar de Firestore, usando datos en memoria:', e.message);
+      // Usar lo que ya tenemos en state
+    }
+
+    console.log('[PDF] Generando con', todasFirmas.length, 'firmas, cadena:', permisoCompleto.cadena_emails);
+
     const pdfBytes = await generarPDFPermiso(permisoCompleto, todasFirmas);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url  = URL.createObjectURL(blob);
@@ -983,6 +982,7 @@ async function handleDescargarPDF() {
     a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
   } catch (err) {
+    console.error('[PDF] Error:', err);
     toast('Error al generar el PDF: ' + err.message, 'error');
   }
 }
