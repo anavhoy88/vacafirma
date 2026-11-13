@@ -974,6 +974,7 @@ async function handleDescargarPDF() {
     }
 
     console.log('[PDF] Generando con', todasFirmas.length, 'firmas, cadena:', permisoCompleto.cadena_emails);
+    console.log('[PDF] Detalle firmas:', JSON.stringify(todasFirmas.map(f => ({rol:f.rol_firma, idx:f.indice_cadena, accion:f.accion, nombre:f.firmante?.nombre_completo}))));
 
     const pdfBytes = await generarPDFPermiso(permisoCompleto, todasFirmas);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
