@@ -919,3 +919,10 @@ body {
   .auth-block { gap: 0.6rem; }
   .auth-block .escarapela { width: 22px; height: 22px; }
 }
+
+/* ── AVISO FIRMA EN MÓVIL ── */
+.aviso-movil { display: none; margin: 1rem 0; padding: 0.85rem 1rem; border-radius: 10px;
+  background: #fff8db; border: 1px solid var(--gold); border-left: 4px solid var(--gold);
+  color: var(--navy); font-size: 0.9rem; line-height: 1.45; }
+.aviso-movil strong { display: block; margin-bottom: 0.15rem; }
+.es-movil .aviso-movil { display: block; }

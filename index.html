@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#003764" />
   <link rel="stylesheet" href="css/style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script>if(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent)))document.documentElement.classList.add("es-movil");</script>
 </head>
 <body>
 
@@ -249,6 +250,7 @@
 
       </div>
 
+      <div class="aviso-movil" role="note"><strong>📱 Firma no disponible en el móvil.</strong> Para firmar, accede desde un PC con AutoFirma y tu DNIe o tarjeta PKI.</div>
       <div class="form-actions">
         <button class="btn-outline" onclick="document.getElementById('btnCancelarForm').click()">Cancelar</button>
         <button class="btn-primary" id="btnFirmarEnviar">
@@ -281,6 +283,7 @@
       <div class="sign-section" id="seccionFirmaJefe" style="display:none;">
         <h3 class="card-title">Acción de firma</h3>
         <p class="sign-desc">Al firmar, confirmas la aprobación o rechazo de esta solicitud.</p>
+        <div class="aviso-movil" role="note"><strong>📱 Firma no disponible en el móvil.</strong> Para firmar, accede desde un PC con AutoFirma y tu DNIe o tarjeta PKI.</div>
 
         <div class="btn-row" style="gap:1rem;flex-wrap:wrap;">
           <button class="btn-primary" id="btnAprobar">
