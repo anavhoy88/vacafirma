@@ -6,28 +6,8 @@
   <title>SIGESPER-FFAA — Solicitud de Permisos · Ala 14</title>
   <link rel="icon" type="image/png" href="img/favicon.png" />
   <meta name="theme-color" content="#003764" />
-  <!-- Content Security Policy: restringe la ejecución de scripts a orígenes conocidos -->
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self';
-                 script-src 'self' 'unsafe-inline'
-                   https://www.gstatic.com
-                   https://cdnjs.cloudflare.com
-                   https://cdn.jsdelivr.net;
-                 style-src 'self' 'unsafe-inline'
-                   https://fonts.googleapis.com;
-                 font-src 'self'
-                   https://fonts.gstatic.com;
-                 connect-src 'self'
-                   https://*.googleapis.com
-                   https://*.firebaseio.com
-                   https://identitytoolkit.googleapis.com
-                   https://securetoken.googleapis.com
-                   https://firestore.googleapis.com
-                   https://firebase.googleapis.com
-                   wss://*.firebaseio.com;
-                 img-src 'self' data: blob:;
-                 frame-src 'none';
-                 object-src 'none';" />
+  <!-- Las cabeceras de seguridad (CSP, HSTS, X-Frame-Options…) se inyectan
+       en firebase.json para que vayan como cabeceras HTTP reales, no como meta-tag. -->
   <link rel="stylesheet" href="css/style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <script>if(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent)))document.documentElement.classList.add("es-movil");</script>

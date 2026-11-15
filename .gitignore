@@ -1,3 +1,11 @@
 
-# Firebase config con credenciales (no subir al repo)
+# Firebase config con credenciales (no subir al repo, SÍ se sube con firebase deploy)
 js/firebase-config.js
+
+# Firebase CLI
+.firebase/
+.firebaserc
+
+# Node (script de importación)
+node_modules/
+scripts/node_modules/
