@@ -891,7 +891,13 @@ body {
 .logo-title { font-weight: 700; letter-spacing: 0.04em; }
 .logo-sub { color: var(--cream-dark); }
 .auth-status { color: var(--sky); }
-.art-emblema { position: relative; z-index: 1; width: 200px; height: auto; filter: brightness(0) invert(1); }
+.art-emblema { position: relative; z-index: 1; width: 170px; height: auto; filter: brightness(0) invert(1); }
+.login-art .r2 { width: 300px; height: 300px; }
+.login-art .r3 { width: 460px; height: 460px; }
+.escarapela { display:inline-block; width:26px; height:26px; border-radius:50%; flex:none;
+  background: radial-gradient(circle closest-side, #ad2e1c 0 34%, #fac200 33% 66%, #ad2e1c 66% 100%);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.9); }
+.escarapela-lg { position:absolute; top:1.5rem; right:1.5rem; width:44px; height:44px; z-index:1; }
 .display-title { font-weight: 700; letter-spacing: -0.01em; }
 .display-title em { font-style: normal; color: var(--navy-light); }
 @media (max-width: 700px) { .logo-ea { height: 32px; } .logo-sep, .logo-block > div { display: none; } }
