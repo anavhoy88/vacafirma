@@ -11,7 +11,7 @@
       "README.md",
       "scripts/**",
       ".gitignore",
-      "js/firebase-config.js"
+      "js/firebase-config.example.js"
     ],
     "headers": [
       {
