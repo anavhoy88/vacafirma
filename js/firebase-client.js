@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// firebase-client.js — VacaFirma 2.0
+// firebase-client.js — SIGESPER-FFAA 2.0
 // Reemplaza supabase-client.js usando Firebase como backend.
 // Las funciones exportadas mantienen la misma firma para que
 // app.js no necesite cambios.
@@ -76,7 +76,7 @@ async function enviarMagicLink(email) {
   };
   await sendSignInLinkToEmail(_auth, email, actionCodeSettings);
   // Guardamos el email para usarlo cuando el usuario vuelve con el link
-  window.localStorage.setItem('vacafirma_emailForSignIn', email);
+  window.localStorage.setItem('sigesper_emailForSignIn', email);
 }
 
 async function loginConContrasena(email, password) {
@@ -91,7 +91,7 @@ async function logout() {
 function onAuthStateChange(callback) {
   // Primero comprobamos si la URL actual es un magic link
   if (isSignInWithEmailLink(_auth, window.location.href)) {
-    let email = window.localStorage.getItem('vacafirma_emailForSignIn');
+    let email = window.localStorage.getItem('sigesper_emailForSignIn');
     if (!email) {
       // Si no tenemos el email guardado, pedirlo
       email = window.prompt('Introduce tu correo para confirmar el acceso:');
@@ -99,7 +99,7 @@ function onAuthStateChange(callback) {
     if (email) {
       signInWithEmailLink(_auth, email, window.location.href)
         .then(() => {
-          window.localStorage.removeItem('vacafirma_emailForSignIn');
+          window.localStorage.removeItem('sigesper_emailForSignIn');
           // Limpiar el hash/query de la URL sin recargar
           window.history.replaceState({}, document.title, window.location.pathname);
         })
@@ -252,7 +252,7 @@ async function crearPermiso(datos) {
   const cadena_ids = [];
   for (const email of cadena_emails) {
     const usuario = await buscarUsuarioPorEmail(email);
-    if (!usuario) throw new Error(`${email} no es un jefe registrado en VacaFirma.`);
+    if (!usuario) throw new Error(`${email} no es un jefe registrado en SIGESPER-FFAA.`);
     cadena_ids.push(usuario.id);
   }
 
