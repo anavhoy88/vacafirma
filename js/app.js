@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// app.js — VacaFirma 2.0 — Controlador principal
+// app.js — SIGESPER-FFAA 2.0 — Controlador principal
 // ═══════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════
@@ -515,7 +515,7 @@ function anadirFirmante(email = '') {
       style="flex:1;padding:0.5rem 0.75rem;border:1px solid var(--border,#ddd);border-radius:6px;font-size:0.9rem;" />
     <button type="button" class="btn-outline btn-rm-firmante"
       title="Eliminar firmante"
-      style="padding:0.3rem 0.6rem;font-size:0.85rem;line-height:1;color:var(--red,#c0392b);border-color:var(--red,#c0392b);"
+      style="padding:0.3rem 0.6rem;font-size:0.85rem;line-height:1;color:var(--red,#ad2e1c);border-color:var(--red,#ad2e1c);"
       onclick="this.closest('.firmante-row').remove(); renumerarFirmantes();">✕</button>
   `;
   lista.appendChild(row);
@@ -577,7 +577,7 @@ async function handleFirmarYEnviar() {
     if (email.trim().toLowerCase() === (state.user.email || '').toLowerCase()) {
       error = 'No puedes ponerte a ti mismo como firmante.';
     } else if (!(await buscarUsuarioPorEmail(email).catch(() => null))) {
-      error = `${email} no es un jefe registrado en VacaFirma.`;
+      error = `${email} no es un jefe registrado en SIGESPER-FFAA.`;
     }
     if (error) {
       toast(error, 'error');
@@ -1077,7 +1077,7 @@ function notificarFirmante(emailFirmante, nombreEmpleado, permiso, posicion, tot
   const rolLabel = esFinal ? 'Firma final' : `Firmante ${posicion} de ${totalFirmantes}`;
   const appUrl   = window.location.origin + window.location.pathname;
   const asunto   = encodeURIComponent(
-    `[VacaFirma] ACCIÓN REQUERIDA — Solicitud de permiso de ${nombreEmpleado}`
+    `[SIGESPER-FFAA] ACCIÓN REQUERIDA — Solicitud de permiso de ${nombreEmpleado}`
   );
   const cuerpo   = encodeURIComponent(
     `Estimado/a firmante (${rolLabel}),\n\n` +
@@ -1088,9 +1088,9 @@ function notificarFirmante(emailFirmante, nombreEmpleado, permiso, posicion, tot
     `Fin:     ${formatFecha(permiso.fecha_fin)}\n` +
     `Días:    ${permiso.dias_habiles || '—'}\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `Accede a VacaFirma para revisar y firmar:\n${appUrl}\n\n` +
+    `Accede a SIGESPER-FFAA para revisar y firmar:\n${appUrl}\n\n` +
     `Referencia: ${permiso.id}\n\n` +
-    `── Mensaje automático de VacaFirma ──`
+    `── Mensaje automático de SIGESPER-FFAA ──`
   );
   window.location.href = `mailto:${emailFirmante}?subject=${asunto}&body=${cuerpo}`;
   toast(`Solicitud enviada. Notificando a ${emailFirmante}…`, 'success', 7000);
@@ -1101,7 +1101,7 @@ function notificarJefe(emailJefe, nombreEmpleado, permiso, etapa) {
   const rolLabel = etapa === 'seccion' ? 'Jefe de Sección' : 'Jefe de Grupo';
   const appUrl   = window.location.origin + window.location.pathname;
   const asunto = encodeURIComponent(
-    `[VacaFirma] ACCIÓN REQUERIDA — Solicitud de permiso de ${nombreEmpleado}`
+    `[SIGESPER-FFAA] ACCIÓN REQUERIDA — Solicitud de permiso de ${nombreEmpleado}`
   );
   const cuerpo = encodeURIComponent(
     `Estimado/a ${rolLabel},\n\n` +
@@ -1112,11 +1112,11 @@ function notificarJefe(emailJefe, nombreEmpleado, permiso, etapa) {
     `Fin:     ${formatFecha(permiso.fecha_fin)}\n` +
     `Días:    ${permiso.dias_habiles || '—'}\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `Para revisar, aprobar o rechazar la solicitud, accede a VacaFirma:\n` +
+    `Para revisar, aprobar o rechazar la solicitud, accede a SIGESPER-FFAA:\n` +
     `${appUrl}\n\n` +
     `Una vez dentro, busca la solicitud con referencia: ${permiso.id}\n\n` +
-    `Si no tienes cuenta en VacaFirma, responde a este correo para que el empleado te facilite el acceso.\n\n` +
-    `── Mensaje automático de VacaFirma ──`
+    `Si no tienes cuenta en SIGESPER-FFAA, responde a este correo para que el empleado te facilite el acceso.\n\n` +
+    `── Mensaje automático de SIGESPER-FFAA ──`
   );
   // Abrir cliente de correo con location.href (más fiable que window.open o a.click)
   const mailtoLink = `mailto:${emailJefe}?subject=${asunto}&body=${cuerpo}`;
@@ -1129,7 +1129,7 @@ function notificarAprobadoFirmante(permiso, emailFirmante) {
   if (!emailFirmante) return;
   const emp    = permiso.empleado || {};
   const appUrl = window.location.origin + window.location.pathname;
-  const asunto = encodeURIComponent('[VacaFirma] Solicitud aprobada — copia para el firmante');
+  const asunto = encodeURIComponent('[SIGESPER-FFAA] Solicitud aprobada — copia para el firmante');
   const cuerpo = encodeURIComponent(
     `Has aprobado y firmado la siguiente solicitud de permiso:\n\n` +
     `Interesado: ${emp.nombre_completo || emp.email || '—'}\n` +
@@ -1137,7 +1137,7 @@ function notificarAprobadoFirmante(permiso, emailFirmante) {
     `Tipo:       ${TIPO_LABELS[permiso.tipo] || permiso.tipo}\n` +
     `Referencia: ${permiso.id}\n\n` +
     `La solicitud ha quedado aprobada definitivamente.\n` +
-    `Puedes descargar el documento firmado en VacaFirma:\n${appUrl}\n`
+    `Puedes descargar el documento firmado en SIGESPER-FFAA:\n${appUrl}\n`
   );
   window.location.href = `mailto:${emailFirmante}?subject=${asunto}&body=${cuerpo}`;
 }
@@ -1147,12 +1147,12 @@ function notificarAprobado(permiso) {
   const emp    = permiso.empleado || {};
   if (!emp.email) return;
   const appUrl = window.location.origin + window.location.pathname;
-  const asunto = encodeURIComponent('[VacaFirma] Tu solicitud ha sido aprobada');
+  const asunto = encodeURIComponent('[SIGESPER-FFAA] Tu solicitud ha sido aprobada');
   const cuerpo = encodeURIComponent(
     `Tu solicitud de permiso ha sido aprobada por todos los firmantes.\n\n` +
     `Período: ${formatFecha(permiso.fecha_inicio)} → ${formatFecha(permiso.fecha_fin)}\n` +
     `Referencia: ${permiso.id}\n\n` +
-    `Puedes descargar el documento firmado accediendo a VacaFirma:\n${appUrl}\n`
+    `Puedes descargar el documento firmado accediendo a SIGESPER-FFAA:\n${appUrl}\n`
   );
   window.open(`mailto:${emp.email}?subject=${asunto}&body=${cuerpo}`, '_blank');
 }
@@ -1162,13 +1162,13 @@ function notificarRechazo(permiso, motivo, rolFirma) {
   if (!emp.email) return;
   const appUrl       = window.location.origin + window.location.pathname;
   const quienRechaza = rolFirma === 'jefe_grupo' ? 'el Jefe de Grupo' : 'el Jefe de Sección';
-  const asunto = encodeURIComponent('[VacaFirma] Tu solicitud ha sido rechazada');
+  const asunto = encodeURIComponent('[SIGESPER-FFAA] Tu solicitud ha sido rechazada');
   const cuerpo = encodeURIComponent(
     `Tu solicitud de permiso ha sido rechazada por ${quienRechaza}.\n\n` +
     `Período: ${formatFecha(permiso.fecha_inicio)} → ${formatFecha(permiso.fecha_fin)}\n` +
     `Motivo: ${motivo}\n` +
     `Referencia: ${permiso.id}\n\n` +
-    `Puedes acceder a VacaFirma para más detalles:\n${appUrl}\n`
+    `Puedes acceder a SIGESPER-FFAA para más detalles:\n${appUrl}\n`
   );
   window.open(`mailto:${emp.email}?subject=${asunto}&body=${cuerpo}`, '_blank');
 }

@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// pdf-generator.js — VacaFirma 2.0
+// pdf-generator.js — SIGESPER-FFAA 2.0
 // pdf-lib: origen (0,0) = esquina INFERIOR izquierda.
 // Todas las funciones auxiliares trabajan en coordenadas desde
 // la parte SUPERIOR (más natural). Se convierten al llamar a pdf-lib.
@@ -333,7 +333,7 @@ async function generarPDFPermiso(permiso, firmas = [], opciones = {}) {
   // ══════════════════════════════════════════════════════════════
   const pieY = PH - 22;
   hLine(ML, ML+UW, PH - 28, CL.gris);
-  txt('Documento generado electronicamente por VacaFirma · ' + _fmtFechaHoraPDF(new Date().toISOString()),
+  txt('Documento generado electronicamente por SIGESPER-FFAA · ' + _fmtFechaHoraPDF(new Date().toISOString()),
       ML, PH-18, {sz:5.5, col:CL.gris});
   txt('ID: '+(permiso.id||'-'), ML+UW-170, PH-18, {sz:5.5, col:CL.gris});
 

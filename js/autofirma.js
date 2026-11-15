@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// autofirma.js — VacaFirma 2.0
+// autofirma.js — SIGESPER-FFAA 2.0
 // Integración con AutoFirma usando autoscript.js v1.6.5
 // ═══════════════════════════════════════════════════════════════
 
@@ -50,7 +50,7 @@ function buildExtraParams(rol, permisoId) {
   return [
     'signingCertificateV2=true',
     'signatureReason=Solicitud de permiso — ' + rol,
-    'signatureContactInfo=VacaFirma — ' + permisoId,
+    'signatureContactInfo=SIGESPER-FFAA — ' + permisoId,
     'signaturePage=all',
   ].join('\n');
 }

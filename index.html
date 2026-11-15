@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VacaFirma — Solicitud de Permisos con Firma Digital</title>
+  <title>SIGESPER-FFAA — Solicitud de Permisos · Grupo de Fuerzas Aéreas</title>
+  <link rel="icon" type="image/png" href="img/emblema.png" />
+  <meta name="theme-color" content="#003764" />
   <link rel="stylesheet" href="css/style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 </head>
 <body>
@@ -15,10 +15,11 @@
   <header class="app-header">
     <div class="header-inner">
       <div class="logo-block">
-        <span class="logo-icon">✦</span>
+        <img class="logo-ea" src="img/logo-blanco.png" alt="Ejército del Aire y del Espacio" />
+        <span class="logo-sep"></span>
         <div>
-          <span class="logo-title">VacaFirma</span>
-          <span class="logo-sub">Sistema de solicitud con firma digital</span>
+          <span class="logo-title">SIGESPER-FFAA</span>
+          <span class="logo-sub">Gestión de permisos · Grupo de Fuerzas Aéreas</span>
         </div>
       </div>
       <div class="auth-block" id="authBlock">
@@ -38,7 +39,7 @@
           <div class="art-ring r1"></div>
           <div class="art-ring r2"></div>
           <div class="art-ring r3"></div>
-          <span class="art-icon">✦</span>
+          <img class="art-emblema" src="img/emblema.png" alt="" />
         </div>
         <div class="login-content">
           <h1 class="display-title">Solicitud de<br/><em>Permisos</em></h1>
@@ -232,7 +233,7 @@
             </label>
             <div id="listaFirmantes" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
             <button type="button" id="btnAnadirFirmante"
-              style="margin-top:0.5rem;padding:0.5rem 1.2rem;font-size:0.85rem;background:#1a2e4a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
+              style="margin-top:0.5rem;padding:0.5rem 1.2rem;font-size:0.85rem;background:#003764;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
               + Añadir firmante
             </button>
             <p style="margin-top:0.3rem;font-size:0.78rem;color:var(--muted,#888);">
@@ -281,7 +282,7 @@
             <span class="sign-icon">✓</span>
             Aprobar y firmar con AutoFirma
           </button>
-          <button class="btn-outline" id="btnRechazar" style="color:var(--red,#c0392b);border-color:var(--red,#c0392b);">
+          <button class="btn-outline" id="btnRechazar" style="color:var(--red,#ad2e1c);border-color:var(--red,#ad2e1c);">
             Rechazar
           </button>
         </div>
@@ -293,7 +294,7 @@
             <textarea id="motivoRechazo" rows="3" placeholder="Indica el motivo del rechazo…"></textarea>
           </div>
           <div class="btn-row" style="gap:1rem;margin-top:0.75rem;">
-            <button class="btn-primary" id="btnConfirmarRechazo" style="background:var(--red,#c0392b);">
+            <button class="btn-primary" id="btnConfirmarRechazo" style="background:var(--red,#ad2e1c);">
               Confirmar rechazo
             </button>
             <button class="btn-outline" id="btnCancelarRechazo">Cancelar</button>

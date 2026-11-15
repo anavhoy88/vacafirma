@@ -1,34 +1,39 @@
+@font-face{font-family:'Archivo';font-style:normal;font-weight:400;font-display:swap;src:url('../fonts/archivo-latin-400-normal.woff2') format('woff2');}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:500;font-display:swap;src:url('../fonts/archivo-latin-500-normal.woff2') format('woff2');}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:600;font-display:swap;src:url('../fonts/archivo-latin-600-normal.woff2') format('woff2');}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:700;font-display:swap;src:url('../fonts/archivo-latin-700-normal.woff2') format('woff2');}
 /* ═══════════════════════════════════════════════════════════════
-   VacaFirma — Design System
+   SIGESPER-FFAA — Design System
    Estética: Institucional refinada — azul noche + crema + oro
    Tipografía: DM Serif Display + Outfit + DM Mono
 ═══════════════════════════════════════════════════════════════ */
 
 :root {
-  --navy:      #0f1a2e;
-  --navy-mid:  #1a2d4a;
-  --navy-light:#243a5e;
-  --cream:     #f5f0e8;
-  --cream-dark:#ede6d8;
-  --gold:      #c9a84c;
-  --gold-light:#e8c96d;
+  --navy:      #003764;
+  --navy-mid:  #0b4a7a;
+  --navy-light:#4e738a;
+  --cream:     #eef2f5;
+  --cream-dark:#b7c7d3;
+  --gold:      #fac200;
+  --gold-light:#fdd85c;
   --jade:      #2d7a5f;
   --jade-light:#3a9e78;
-  --red-soft:  #c0392b;
-  --text-main: #0f1a2e;
-  --text-muted:#5a6880;
-  --text-light:#8a98ab;
+  --red-soft:  #ad2e1c;
+  --text-main: #003764;
+  --text-muted:#4e738a;
+  --text-light:#7a97ab;
   --white:     #ffffff;
-  --border:    rgba(15,26,46,0.12); 
-  --border-gold: rgba(201,168,76,0.35);
-  --shadow-sm: 0 2px 8px rgba(15,26,46,0.08);
-  --shadow-md: 0 8px 32px rgba(15,26,46,0.12);
-  --shadow-lg: 0 20px 60px rgba(15,26,46,0.18);
+  --border:    rgba(0,55,100,0.12); 
+  --border-gold: rgba(141,198,232,0.35);
+  --sky:       #8dc6e8;
+  --shadow-sm: 0 2px 8px rgba(0,55,100,0.08);
+  --shadow-md: 0 8px 32px rgba(0,55,100,0.12);
+  --shadow-lg: 0 20px 60px rgba(0,55,100,0.18);
   --radius:    12px;
   --radius-lg: 20px;
-  --font-display: 'DM Serif Display', Georgia, serif;
-  --font-body:    'Outfit', sans-serif;
-  --font-mono:    'DM Mono', monospace;
+  --font-display: 'Archivo', Arial, Helvetica, sans-serif;
+  --font-body:    'Archivo', Arial, Helvetica, sans-serif;
+  --font-mono:    Consolas, 'Courier New', monospace;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -233,8 +238,8 @@ body {
 
 .btn-outline {
   background: transparent;
-  color: var(--navy, #1a2e4a);
-  border: 1.5px solid var(--navy, #1a2e4a);
+  color: var(--navy, #003764);
+  border: 1.5px solid var(--navy, #003764);
   border-radius: 8px;
   padding: 0.75rem 1.5rem;
   font-family: var(--font-body);
@@ -245,7 +250,7 @@ body {
 }
 
 .btn-outline:hover {
-  background: var(--navy, #1a2e4a);
+  background: var(--navy, #003764);
   color: #fff;
 }
 
@@ -302,7 +307,7 @@ body {
 
 .btn-sign:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(201,168,76,0.3);
+  box-shadow: 0 8px 24px rgba(250,194,0,0.3);
 }
 
 .sign-icon { font-size: 1.2rem; }
@@ -344,7 +349,7 @@ body {
 .input-group textarea:focus {
   outline: none;
   border-color: var(--navy);
-  box-shadow: 0 0 0 3px rgba(15,26,46,0.08);
+  box-shadow: 0 0 0 3px rgba(0,55,100,0.08);
   background: var(--white);
 }
 
@@ -630,7 +635,7 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15,26,46,0.7);
+  background: rgba(0,55,100,0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -744,8 +749,8 @@ body {
   font-weight: 600;
   border-radius: 6px;
   cursor: pointer;
-  border: 1.5px solid var(--navy, #1a2744);
-  background: var(--navy, #1a2744);
+  border: 1.5px solid var(--navy, #003764);
+  background: var(--navy, #003764);
   color: #fff;
   transition: opacity 0.15s;
   font-family: inherit;
@@ -753,13 +758,13 @@ body {
 .btn-sm:hover { opacity: 0.8; }
 .btn-sm-outline {
   background: transparent;
-  color: var(--navy, #1a2744);
+  color: var(--navy, #003764);
 }
-.btn-sm-outline:hover { background: var(--cream, #f5f0e8); }
+.btn-sm-outline:hover { background: var(--cream, #eef2f5); }
 .btn-sm-danger {
   background: transparent;
-  color: #c0392b;
-  border-color: #c0392b;
+  color: #ad2e1c;
+  border-color: #ad2e1c;
 }
 .btn-sm-danger:hover { background: #fdf2f2; }
 
@@ -767,7 +772,7 @@ body {
 .firma-dot { font-size: 1rem; }
 .firma-dot.aprobado  { color: var(--jade, #2e7d52); }
 .firma-dot.pendiente { color: var(--text-light, #aaa); }
-.firma-dot.rechazado { color: var(--red-soft, #c0392b); }
+.firma-dot.rechazado { color: var(--red-soft, #ad2e1c); }
 
 /* ── PESTAÑAS DASHBOARD (jefe de sección) ─────────────────────── */
 .dash-tabs {
@@ -828,7 +833,7 @@ body {
 .firmante-row input:focus {
   outline: none;
   border-color: var(--navy-light);
-  box-shadow: 0 0 0 2px rgba(15,26,46,0.08);
+  box-shadow: 0 0 0 2px rgba(0,55,100,0.08);
 }
 
 #cadenaFirmantesWrap label {
@@ -875,5 +880,18 @@ body {
 }
 .detalle-item > span:last-child {
   font-size: 0.95rem;
-  color: var(--text-main, #1a2e4a);
+  color: var(--text-main, #003764);
 }
+
+/* ── IDENTIDAD EA ───────────────────────────────────────────── */
+.app-header { border-bottom: 3px solid var(--sky); }
+.header-inner { height: 72px; }
+.logo-ea { height: 44px; width: auto; display: block; }
+.logo-sep { width: 1px; height: 36px; background: rgba(255,255,255,0.3); }
+.logo-title { font-weight: 700; letter-spacing: 0.04em; }
+.logo-sub { color: var(--cream-dark); }
+.auth-status { color: var(--sky); }
+.art-emblema { position: relative; z-index: 1; width: 200px; height: auto; filter: brightness(0) invert(1); }
+.display-title { font-weight: 700; letter-spacing: -0.01em; }
+.display-title em { font-style: normal; color: var(--navy-light); }
+@media (max-width: 700px) { .logo-ea { height: 32px; } .logo-sep, .logo-block > div { display: none; } }
