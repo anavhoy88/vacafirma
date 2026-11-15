@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Toggle login con contraseña
+  // Toggle magic link (enlace secundario)
   const toggle  = $('togglePasswordLogin');
   const section = $('loginPasswordSection');
   if (toggle && section) {
@@ -63,7 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       const abierto = section.style.display !== 'none';
       section.style.display = abierto ? 'none' : 'block';
-      toggle.textContent    = abierto ? 'Acceder con contraseña' : 'Usar enlace de acceso';
+      toggle.textContent    = abierto
+        ? '¿Olvidaste tu contraseña? Recibe un enlace de acceso'
+        : 'Volver a acceder con contraseña';
     });
   }
 });
@@ -124,11 +126,9 @@ function bindEvents() {
   // Formulario cadena de firmantes
   $('btnAnadirFirmante') && $('btnAnadirFirmante').addEventListener('click', () => anadirFirmante());
 
-  // Modal contraseña
+  // Modal contraseña (obligatorio en primer acceso — no tiene botón de cerrar)
   $('btnGuardarContrasena')    && $('btnGuardarContrasena').addEventListener('click', handleGuardarContrasena);
-  $('btnCerrarModalContrasena') && $('btnCerrarModalContrasena').addEventListener('click', () => {
-    $('modalContrasena').classList.add('hidden');
-  });
+  $('nuevaContrasenaConfirm')  && $('nuevaContrasenaConfirm').addEventListener('keydown', e => { if (e.key === 'Enter') handleGuardarContrasena(); });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -190,7 +190,7 @@ async function handleLoginPassword() {
     // onAuthStateChange se encarga del resto
   } catch (err) {
     toast('Error: ' + err.message, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = 'Entrar con contraseña'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
   }
 }
 
@@ -200,9 +200,9 @@ async function handleLogout() {
   actualizarHeaderAuth();
   // Restaurar botones del panel de login por si quedaron deshabilitados
   const btnLP = $('btnLoginPassword');
-  if (btnLP) { btnLP.disabled = false; btnLP.textContent = 'Entrar con contraseña'; }
+  if (btnLP) { btnLP.disabled = false; btnLP.textContent = 'Entrar'; }
   const btnML = $('btnSendMagicLink');
-  if (btnML) { btnML.disabled = false; btnML.textContent = 'Enviar enlace mágico'; }
+  if (btnML) { btnML.disabled = false; btnML.textContent = 'Enviar enlace de acceso al correo'; }
   mostrarPanel('panelLogin');
 }
 

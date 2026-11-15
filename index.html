@@ -57,29 +57,28 @@
               <input type="email" id="loginEmail" name="email" placeholder="nombre@organismo.es" autocomplete="email" />
             </div>
 
-            <div id="loginPasswordSection" style="display:none;">
-              <div class="input-group" style="margin-top:0.75rem;">
-                <label for="loginPassword">Contraseña</label>
-                <input type="password" id="loginPassword" name="password" placeholder="••••••••" autocomplete="current-password" />
-              </div>
-              <button type="button" class="btn-primary" id="btnLoginPassword" style="margin-top:0.5rem;width:100%;">
-                <span>Entrar con contraseña</span>
-                <span class="btn-icon">→</span>
-              </button>
-              <p style="text-align:center;margin:0.5rem 0;font-size:0.78rem;color:var(--muted,#888);">— o —</p>
+            <div class="input-group" style="margin-top:0.75rem;">
+              <label for="loginPassword">Contraseña</label>
+              <input type="password" id="loginPassword" name="password" placeholder="••••••••" autocomplete="current-password" />
             </div>
 
-            <button type="button" class="btn-primary" id="btnSendMagicLink">
-              <span>Enviar enlace de acceso</span>
+            <button type="button" class="btn-primary" id="btnLoginPassword" style="margin-top:1rem;width:100%;">
+              <span>Entrar</span>
               <span class="btn-icon">→</span>
             </button>
           </form>
 
-          <p style="text-align:center;margin-top:0.6rem;">
+          <p style="text-align:center;margin-top:1rem;">
             <a href="#" id="togglePasswordLogin" style="font-size:0.78rem;color:var(--muted,#888);text-decoration:none;">
-              Acceder con contraseña
+              ¿Olvidaste tu contraseña? Recibe un enlace de acceso
             </a>
           </p>
+
+          <div id="loginPasswordSection" style="display:none;margin-top:0.75rem;">
+            <button type="button" class="btn-outline" id="btnSendMagicLink" style="width:100%;">
+              <span>Enviar enlace de acceso al correo</span>
+            </button>
+          </div>
 
           <p class="login-note" id="loginMessage"></p>
         </div>
@@ -324,9 +323,9 @@
   <div class="modal-overlay hidden" id="modalContrasena">
     <div class="modal">
       <div class="modal-icon">🔑</div>
-      <h3>Establecer contraseña</h3>
+      <h3>Crea tu contraseña</h3>
       <p style="margin-bottom:1rem;color:var(--text-muted,#666);font-size:0.9rem;">
-        Añade una contraseña a tu cuenta para poder acceder sin depender del enlace de correo.
+        Es tu primer acceso. Establece una contraseña para entrar directamente la próxima vez sin necesidad de enlace por correo.
       </p>
       <div class="input-group" style="text-align:left;">
         <label for="nuevaContrasena">Nueva contraseña</label>
@@ -337,8 +336,7 @@
         <input type="password" id="nuevaContrasenaConfirm" placeholder="Repite la contraseña" autocomplete="new-password" />
       </div>
       <div class="modal-actions" style="margin-top:1rem;">
-        <button class="btn-outline" id="btnCerrarModalContrasena">Ahora no</button>
-        <button class="btn-primary" id="btnGuardarContrasena">Guardar contraseña</button>
+        <button class="btn-primary" id="btnGuardarContrasena" style="width:100%;">Guardar contraseña</button>
       </div>
     </div>
   </div>
