@@ -169,9 +169,22 @@ async function handleGuardarContrasena() {
 // AUTH
 // ══════════════════════════════════════════════════════════════
 
+// Dominios institucionales permitidos
+const DOMINIOS_PERMITIDOS = ['ea.mde.es', 'mde.es'];
+
+function dominioCorrecto(email) {
+  const partes = email.trim().toLowerCase().split('@');
+  if (partes.length !== 2) return false;
+  return DOMINIOS_PERMITIDOS.includes(partes[1]);
+}
+
 async function handleMagicLink() {
   const email = $('loginEmail').value.trim();
   if (!email) { toast('Introduce tu correo.', 'error'); return; }
+  if (!dominioCorrecto(email)) {
+    toast('Solo se permiten correos @ea.mde.es o @mde.es.', 'error');
+    return;
+  }
   const btn = $('btnSendMagicLink');
   btn.disabled = true;
   try {
@@ -189,6 +202,10 @@ async function handleLoginPassword() {
   const email    = $('loginEmail').value.trim();
   const password = $('loginPassword') ? $('loginPassword').value : '';
   if (!email || !password) { toast('Introduce correo y contraseña.', 'error'); return; }
+  if (!dominioCorrecto(email)) {
+    toast('Solo se permiten correos @ea.mde.es o @mde.es.', 'error');
+    return;
+  }
   const btn = $('btnLoginPassword');
   if (btn) { btn.disabled = true; btn.textContent = 'Entrando…'; }
   try {
