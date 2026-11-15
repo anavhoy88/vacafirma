@@ -631,6 +631,29 @@ async function descargarPDF(path) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// PRIMER ACCESO — contraseña temporal
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Devuelve true si el perfil del usuario tiene primer_acceso === true.
+ * Se usa para forzar el cambio de contraseña al primer login.
+ */
+function esPrimerAcceso(profile) {
+  return profile && profile.primer_acceso === true;
+}
+
+/**
+ * Marca primer_acceso = false en Firestore una vez que el usuario
+ * ha establecido su propia contraseña.
+ */
+async function marcarPrimerAccesoCompletado(userId) {
+  await updateDoc(doc(_db, 'user_profiles', userId), {
+    primer_acceso: false,
+    updated_at: serverTimestamp(),
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
 // CONTRASEÑA — establecer / cambiar desde dentro de la sesión
 // ══════════════════════════════════════════════════════════════
 
@@ -701,4 +724,7 @@ Object.assign(window, {
   eliminarPermiso,
   establecerContrasena,
   usuarioSinContrasena,
+  // Primer acceso
+  esPrimerAcceso,
+  marcarPrimerAccesoCompletado,
 });

@@ -44,9 +44,10 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         await cargarDashboard();
         mostrarPanel('panelDashboard');
-        // Mostrar modal de contraseña solo si el usuario NO tiene proveedor 'password'
-        // usuarioSinContrasena() usa Firebase Auth providerData — es la fuente correcta
-        if (usuarioSinContrasena() && $('modalContrasena')) {
+        // Mostrar modal de contraseña si:
+        //   a) usuario importado con contraseña temporal (primer_acceso === true), O
+        //   b) usuario que solo tiene magic link (sin proveedor 'password')
+        if ((esPrimerAcceso(state.profile) || usuarioSinContrasena()) && $('modalContrasena')) {
           $('modalContrasena').classList.remove('hidden');
         }
       }
@@ -150,6 +151,11 @@ async function handleGuardarContrasena() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
     await establecerContrasena(pwd1);
+    // Si era primer acceso (contraseña temporal), marcarlo como completado en Firestore
+    if (state.profile && esPrimerAcceso(state.profile)) {
+      await marcarPrimerAccesoCompletado(state.user.id);
+      state.profile.primer_acceso = false;
+    }
     $('modalContrasena').classList.add('hidden');
     toast('✓ Contraseña establecida. Ya puedes acceder con email y contraseña.', 'success');
   } catch (err) {
