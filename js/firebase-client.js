@@ -43,19 +43,23 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
 // ── Inicialización ─────────────────────────────────────────────
-// La config se lee de js/firebase-config.js (excluido de git).
-// Si no existe ese archivo, se usa la config embebida como fallback.
+// La config DEBE inyectarse mediante window.__FIREBASE_CONFIG__
+// desde firebase-config.js (excluido de git y de GitHub Pages).
+// Ver: js/firebase-config.example.js para la estructura esperada.
+// NO se incluye ninguna clave por defecto en este archivo.
 
-const firebaseConfig = (typeof window.__FIREBASE_CONFIG__ !== 'undefined')
-  ? window.__FIREBASE_CONFIG__
-  : {
-      apiKey:            "AIzaSyAKyL_elQeUfxfYeyPcpmI4Mlq7UTy3DxY",
-      authDomain:        "vacafirma.firebaseapp.com",
-      projectId:         "vacafirma",
-      storageBucket:     "vacafirma.firebasestorage.app",
-      messagingSenderId: "352797871816",
-      appId:             "1:352797871816:web:508aaed15e857bde7c1ffd",
-    };
+if (typeof window.__FIREBASE_CONFIG__ === 'undefined') {
+  document.body.innerHTML =
+    '<div style="font-family:sans-serif;padding:2rem;color:#c0392b">' +
+    '<h2>Error de configuración</h2>' +
+    '<p>No se encontró <code>js/firebase-config.js</code>.<br>' +
+    'Copia <code>js/firebase-config.example.js</code>, rellena tus credenciales ' +
+    'y sirve la app desde un servidor local o despliégala correctamente.</p>' +
+    '</div>';
+  throw new Error('[SIGESPER] firebase-config.js no encontrado. Ver firebase-config.example.js.');
+}
+
+const firebaseConfig = window.__FIREBASE_CONFIG__;
 
 const _app     = initializeApp(firebaseConfig);
 const _auth    = getAuth(_app);
@@ -431,8 +435,7 @@ async function getPermisosParaJefeGrupo() {
   const resultados = await Promise.all(estados.map(estado =>
     getDocs(query(collection(_db, 'permisos'), where('estado', '==', estado)))
   ));
-  console.log('[JefeGrupo] Resultados por estado:',
-    estados.map((e, i) => `${e}: ${resultados[i].size} docs`).join(', '));
+  // [debug eliminado — ver auditoría de seguridad]
   const permisos = await Promise.all(
     resultados.flatMap(snap => snap.docs).map(async d => {
       const permiso = { id: d.id, ...d.data() };
@@ -441,7 +444,7 @@ async function getPermisosParaJefeGrupo() {
       return permiso;
     })
   );
-  console.log('[JefeGrupo] Total permisos cargados:', permisos.length);
+  // [debug eliminado — ver auditoría de seguridad]
   // Ordenar por fecha desc
   permisos.sort((a, b) => {
     const ta = a.created_at?.seconds || 0;
@@ -665,21 +668,40 @@ function usuarioSinContrasena() {
 }
 
 /**
- * Vincula contraseña a una cuenta que solo tiene magic link.
- * Llama a linkWithCredential; si ya tiene contraseña, hace updatePassword.
+ * Vincula contraseña a una cuenta que solo tiene magic link,
+ * o cambia la contraseña si ya la tiene (primer acceso / cambio manual).
+ *
+ * Seguridad: exige la contraseña actual antes de actualizar (reauthentication)
+ * para evitar que un atacante con sesión desbloqueada cambie la contraseña
+ * sin conocerla.
+ *
+ * @param {string} nuevaContrasena
+ * @param {string} [contrasenaActual] — requerida si el usuario ya tiene contraseña
  */
-async function establecerContrasena(nuevaContrasena) {
+async function establecerContrasena(nuevaContrasena, contrasenaActual) {
   const user = _auth.currentUser;
   if (!user) throw new Error('No hay sesión activa.');
-  const credential = EmailAuthProvider.credential(user.email, nuevaContrasena);
-  // Intentar vincular (si ya tiene password, linkWithCredential falla → updatePassword)
-  try {
-    await linkWithCredential(user, credential);
-  } catch (err) {
-    if (err.code === 'auth/provider-already-linked' || err.code === 'auth/email-already-in-use') {
-      await updatePassword(user, nuevaContrasena);
-    } else {
-      throw err;
+
+  const tienePasword = user.providerData.some(p => p.providerId === 'password');
+
+  if (tienePasword) {
+    // Usuario ya tiene contraseña → reautenticar antes de cambiarla
+    if (!contrasenaActual) throw new Error('Debes introducir tu contraseña actual para cambiarla.');
+    const credActual = EmailAuthProvider.credential(user.email, contrasenaActual);
+    await reauthenticateWithCredential(user, credActual);
+    await updatePassword(user, nuevaContrasena);
+  } else {
+    // Primera vez (magic link / primer acceso) → vincular contraseña directamente
+    const credential = EmailAuthProvider.credential(user.email, nuevaContrasena);
+    try {
+      await linkWithCredential(user, credential);
+    } catch (err) {
+      if (err.code === 'auth/provider-already-linked' || err.code === 'auth/email-already-in-use') {
+        // Raza improbable: vínculo ya existía, actualizar directamente
+        await updatePassword(user, nuevaContrasena);
+      } else {
+        throw err;
+      }
     }
   }
 }
