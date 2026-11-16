@@ -25,6 +25,15 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Solo se permite el dominio corporativo
+    function dominioValido() {
+      return request.auth.token.email.lower().matches('.*@ejercitodelaire\\.es$');
+    }
+
+    function autenticado() {
+      return signedIn() && dominioValido();
+    }
+
     function uid() {
       return request.auth.uid;
     }
@@ -62,20 +71,20 @@ service cloud.firestore {
     // Un empleado ve su perfil y los de los jefes (para elegir firmantes).
     // Un jefe ve también los perfiles de los empleados (datos del PDF).
     match /user_profiles/{userId} {
-      allow get, list: if signedIn() && (
+      allow get, list: if autenticado() && (
         userId == uid()
         || resource.data.rol in rolesJefe()
         || soyJefe()
       );
 
       // Alta del propio perfil: siempre como empleado y con su propio correo.
-      allow create: if signedIn() && userId == uid()
+      allow create: if autenticado() && userId == uid()
         && request.resource.data.get('rol', 'empleado') == 'empleado'
         && request.resource.data.get('email', '').lower() == request.auth.token.email.lower()
         && !('activo' in request.resource.data);
 
       // Edición del propio perfil sin tocar rol, activo ni correo.
-      allow update: if signedIn() && userId == uid()
+      allow update: if autenticado() && userId == uid()
         && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['rol', 'activo', 'email']);
 
@@ -156,7 +165,7 @@ service cloud.firestore {
           && (c.size() < 4 || eslabonValido(c, e, 3));
       }
 
-      allow get, list: if signedIn() && (
+      allow get, list: if autenticado() && (
         esPropietario()
         || enCadena()
         || datos().jefe_seccion_id == uid()
@@ -164,7 +173,7 @@ service cloud.firestore {
       );
 
       // Crear: solo para uno mismo, en borrador, con id generado por Firestore.
-      allow create: if signedIn()
+      allow create: if autenticado()
         && permisoId.matches('^[A-Za-z0-9]{20}$')
         && nuevos().empleado_id == uid()
         && nuevos().estado == 'borrador'
@@ -175,7 +184,7 @@ service cloud.firestore {
                                     'motivo_rechazo', 'rechazado_por'])
         && nuevos().num_firmas == nuevos().cadena_ids.size() + 1;
 
-      allow update: if signedIn() && rutasPdfValidas() && (
+      allow update: if autenticado() && rutasPdfValidas() && (
         // El solicitante, mientras la solicitud está en borrador:
         // sube su PDF firmado y la envía.
         (esPropietario()
@@ -204,7 +213,7 @@ service cloud.firestore {
       );
 
       // Borrar: solo el solicitante y solo en borrador.
-      allow delete: if signedIn() && esPropietario() && datos().estado == 'borrador';
+      allow delete: if autenticado() && esPropietario() && datos().estado == 'borrador';
 
       // ── Registro de firmas de cada solicitud ──────────────────
       match /firmas/{firmaId} {
@@ -235,9 +244,9 @@ service cloud.firestore {
           );
         }
 
-        allow get, list: if signedIn() && puedeVerPadre();
+        allow get, list: if autenticado() && puedeVerPadre();
 
-        allow create: if signedIn()
+        allow create: if autenticado()
           && request.resource.data.firmante_id == uid()
           && request.resource.data.permiso_id == permisoId
           && (
@@ -252,7 +261,7 @@ service cloud.firestore {
         allow update: if false;
 
         // Solo al borrar un borrador propio.
-        allow delete: if signedIn() && padre().empleado_id == uid()
+        allow delete: if autenticado() && padre().empleado_id == uid()
           && padre().estado == 'borrador';
       }
     }

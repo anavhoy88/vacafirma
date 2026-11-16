@@ -111,10 +111,19 @@ function onAuthStateChange(callback) {
     }
   }
 
-  onAuthStateChanged(_auth, (user) => {
+  onAuthStateChanged(_auth, async (user) => {
     // Adaptamos el objeto user de Firebase al formato que espera app.js
     // (que espera un "session" con session.user.id y session.user.email)
     if (user) {
+      // Validación de dominio: solo se permite @ejercitodelaire.es
+      const dominioPermitido = 'ejercitodelaire.es';
+      const emailDominio = (user.email || '').split('@')[1] || '';
+      if (emailDominio.toLowerCase() !== dominioPermitido) {
+        console.warn('[SIGESPER] Dominio no autorizado:', emailDominio);
+        await signOut(_auth);
+        callback(null);
+        return;
+      }
       callback({
         user: {
           id:    user.uid,
