@@ -1007,11 +1007,14 @@ async function handleDescargarPDF() {
   const permiso = state.permisoActual;
   if (!permiso) return;
   try {
-    // Descargar el PDF firmado guardado (no regenerarlo: un PDF regenerado no lleva firmas PAdES).
     const permisoFull = await getPermisoById(permiso.id);
     const ruta = permisoFull.pdf_final_url || permisoFull.pdf_url;
     if (!ruta) { toast('No hay PDF firmado disponible.', 'error'); return; }
-    const pdfBytes = await descargarPDF(ruta);
+
+    // Generar portada actualizada con estado y firmas reales, y combinarla con el PDF PAdES
+    const pdfFirmadoBytes = await descargarPDF(ruta);
+    const pdfBytes = await combinarPortadaConPDF(permisoFull, pdfFirmadoBytes);
+
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');

@@ -339,3 +339,34 @@ async function generarPDFPermiso(permiso, firmas = [], opciones = {}) {
 
   return new Uint8Array(await doc.save());
 }
+
+// ═══════════════════════════════════════════════════════════════
+// combinarPortadaConPDF
+// Genera una portada actualizada (con estado y firmas reales) y la
+// combina con el PDF PAdES firmado como segunda página.
+// La portada es un PDF nuevo independiente (no modifica el PAdES).
+// ═══════════════════════════════════════════════════════════════
+async function combinarPortadaConPDF(permiso, pdfFirmadoBytes) {
+  const { PDFDocument } = PDFLib;
+
+  // 1. Generar portada actualizada con firmas reales
+  const portadaBytes = await generarPDFPermiso(permiso, permiso.firmas || [], { paraFirmar: false });
+
+  // 2. Cargar ambos documentos
+  const docPortada  = await PDFDocument.load(portadaBytes);
+  const docFirmado  = await PDFDocument.load(pdfFirmadoBytes);
+
+  // 3. Crear documento combinado
+  const docFinal = await PDFDocument.create();
+
+  // Copiar portada (1 página)
+  const [pagPortada] = await docFinal.copyPages(docPortada, [0]);
+  docFinal.addPage(pagPortada);
+
+  // Copiar todas las páginas del PDF firmado
+  const indicesFirmado = docFirmado.getPageIndices();
+  const pagsFirmadas   = await docFinal.copyPages(docFirmado, indicesFirmado);
+  pagsFirmadas.forEach(p => docFinal.addPage(p));
+
+  return new Uint8Array(await docFinal.save());
+}
