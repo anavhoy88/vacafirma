@@ -44,12 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         await cargarDashboard();
         mostrarPanel('panelDashboard');
-        // Mostrar modal de contraseña si:
-        //   a) usuario importado con contraseña temporal (primer_acceso === true), O
-        //   b) usuario que solo tiene magic link (sin proveedor 'password')
-        if ((esPrimerAcceso(state.profile) || usuarioSinContrasena()) && $('modalContrasena')) {
-          $('modalContrasena').classList.remove('hidden');
-        }
+      }
+      // Mostrar modal de contraseña en cualquier caso si es primer acceso:
+      //   a) usuario importado con contraseña temporal (primer_acceso === true)
+      //   b) primer_acceso ausente → creado manualmente sin pasar por el script
+      //   c) usuario sin proveedor password (magic link legacy)
+      if ((esPrimerAcceso(state.profile) || usuarioSinContrasena()) && $('modalContrasena')) {
+        $('modalContrasena').classList.remove('hidden');
       }
     } else {
       mostrarPanel('panelLogin');
