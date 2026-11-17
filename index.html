@@ -317,7 +317,11 @@
       <p style="margin-bottom:1rem;color:var(--text-muted,#666);font-size:0.9rem;">
         Es tu primer acceso. Establece una contraseña personal para proteger tu cuenta.
       </p>
-      <div class="input-group" style="text-align:left;">
+      <div class="input-group" style="text-align:left;" id="grupoContrasenaActual">
+        <label for="contrasenaActual">Contraseña actual (temporal)</label>
+        <input type="password" id="contrasenaActual" placeholder="La que te asignó el administrador" autocomplete="current-password" />
+      </div>
+      <div class="input-group" style="text-align:left;margin-top:0.5rem;">
         <label for="nuevaContrasena">Nueva contraseña</label>
         <input type="password" id="nuevaContrasena" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
       </div>

@@ -123,6 +123,7 @@ function bindEvents() {
 // ══════════════════════════════════════════════════════════════
 
 async function handleGuardarContrasena() {
+  const pwdActual = $('contrasenaActual') ? $('contrasenaActual').value : '';
   const pwd1 = $('nuevaContrasena') ? $('nuevaContrasena').value : '';
   const pwd2 = $('nuevaContrasenaConfirm') ? $('nuevaContrasenaConfirm').value : '';
   if (!pwd1 || pwd1.length < 6) {
@@ -136,7 +137,7 @@ async function handleGuardarContrasena() {
   const btn = $('btnGuardarContrasena');
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
-    await establecerContrasena(pwd1);
+    await establecerContrasena(pwd1, pwdActual || undefined);
     // Si era primer acceso (contraseña temporal), marcarlo como completado en Firestore
     if (state.profile && esPrimerAcceso(state.profile)) {
       await marcarPrimerAccesoCompletado(state.user.id);
