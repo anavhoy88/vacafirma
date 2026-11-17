@@ -56,19 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Toggle magic link (enlace secundario)
-  const toggle  = $('togglePasswordLogin');
-  const section = $('loginPasswordSection');
-  if (toggle && section) {
-    toggle.addEventListener('click', e => {
-      e.preventDefault();
-      const abierto = section.style.display !== 'none';
-      section.style.display = abierto ? 'none' : 'block';
-      toggle.textContent    = abierto
-        ? '¿Olvidaste tu contraseña? Recibe un enlace de acceso'
-        : 'Volver a acceder con contraseña';
-    });
-  }
 });
 
 // ── PANELES ───────────────────────────────────────────────────
@@ -83,7 +70,6 @@ function mostrarPanel(id) {
 
 function bindEvents() {
   // Auth
-  $('btnSendMagicLink')  && $('btnSendMagicLink').addEventListener('click', handleMagicLink);
   $('btnLoginPassword')  && $('btnLoginPassword').addEventListener('click', handleLoginPassword);
   $('loginPassword')     && $('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') handleLoginPassword(); });
   $('btnLogin')          && $('btnLogin').addEventListener('click', () => {
@@ -178,25 +164,6 @@ function dominioCorrecto(email) {
   return DOMINIOS_PERMITIDOS.includes(partes[1]);
 }
 
-async function handleMagicLink() {
-  const email = $('loginEmail').value.trim();
-  if (!email) { toast('Introduce tu correo.', 'error'); return; }
-  if (!dominioCorrecto(email)) {
-    toast('Solo se permiten correos @ea.mde.es o @mde.es.', 'error');
-    return;
-  }
-  const btn = $('btnSendMagicLink');
-  btn.disabled = true;
-  try {
-    await enviarMagicLink(email);
-    $('loginMessage').textContent = `✓ Enlace enviado a ${email}. Revisa tu bandeja.`;
-    $('loginMessage').style.color = 'var(--jade, green)';
-  } catch (err) {
-    toast('Error: ' + err.message, 'error');
-  } finally {
-    btn.disabled = false;
-  }
-}
 
 async function handleLoginPassword() {
   const email    = $('loginEmail').value.trim();
@@ -224,8 +191,6 @@ async function handleLogout() {
   // Restaurar botones del panel de login por si quedaron deshabilitados
   const btnLP = $('btnLoginPassword');
   if (btnLP) { btnLP.disabled = false; btnLP.textContent = 'Entrar'; }
-  const btnML = $('btnSendMagicLink');
-  if (btnML) { btnML.disabled = false; btnML.textContent = 'Enviar enlace de acceso al correo'; }
   mostrarPanel('panelLogin');
 }
 
