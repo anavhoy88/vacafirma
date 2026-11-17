@@ -115,10 +115,10 @@ function onAuthStateChange(callback) {
     // Adaptamos el objeto user de Firebase al formato que espera app.js
     // (que espera un "session" con session.user.id y session.user.email)
     if (user) {
-      // Validación de dominio: solo se permite @ejercitodelaire.es
-      const dominioPermitido = 'ejercitodelaire.es';
+      // Validación de dominio: solo se permiten dominios corporativos MDE/EA
+      const dominiosPermitidos = ['ea.mde.es', 'mde.es'];
       const emailDominio = (user.email || '').split('@')[1] || '';
-      if (emailDominio.toLowerCase() !== dominioPermitido) {
+      if (!dominiosPermitidos.includes(emailDominio.toLowerCase())) {
         console.warn('[SIGESPER] Dominio no autorizado:', emailDominio);
         await signOut(_auth);
         callback(null);

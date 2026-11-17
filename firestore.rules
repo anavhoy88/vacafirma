@@ -27,7 +27,8 @@ service cloud.firestore {
 
     // Solo se permite el dominio corporativo
     function dominioValido() {
-      return request.auth.token.email.lower().matches('.*@ejercitodelaire\\.es$');
+      return request.auth.token.email.lower().matches('.*@ea\\.mde\\.es$') ||
+             request.auth.token.email.lower().matches('.*@mde\\.es$');
     }
 
     function autenticado() {
