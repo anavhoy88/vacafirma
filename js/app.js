@@ -366,7 +366,7 @@ function renderTabla() {
         <td style="white-space:nowrap;">${firmasIconos}</td>
         <td>
           <button class="btn-sm" data-accion="ver" data-id="${esc(p.id)}">Ver</button>
-          ${p.pdf_final_url || p.pdf_url
+          ${false
             ? `<button class="btn-sm btn-sm-outline" data-accion="pdf" data-id="${esc(p.id)}">PDF</button>`
             : ''}
           ${p.estado === 'borrador'
