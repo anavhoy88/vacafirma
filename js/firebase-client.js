@@ -651,9 +651,11 @@ async function descargarPDF(path) {
  * Se usa para forzar el cambio de contraseña al primer login.
  */
 function esPrimerAcceso(profile) {
+  // Sin perfil en Firestore → usuario creado solo en Auth: forzar cambio
+  if (!profile) return true;
   // primer_acceso === true  → importado con contraseña temporal
   // primer_acceso ausente   → creado a mano sin pasar por el script: forzar cambio igualmente
-  return profile && (profile.primer_acceso === true || profile.primer_acceso === undefined);
+  return profile.primer_acceso === true || profile.primer_acceso === undefined;
 }
 
 /**
