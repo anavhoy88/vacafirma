@@ -658,8 +658,8 @@ async function handleFirmarYEnviar() {
     ocultarModalAutofirma();
     if (err.code === 'CANCELLED') {
       toast('Firma cancelada. No se ha guardado ninguna solicitud.', 'warning');
-    } else if (err.code === 'CONNECTION_ERROR') {
-      toast('⚠️ AutoFirma no responde. Ábrela manualmente y vuelve a pulsar "Firmar y enviar".', 'error', 8000);
+    } else if (err.code === 'CONNECTION_ERROR' || err.code === 'TIMEOUT') {
+      toast('⏳ AutoFirma está arrancando. Pulsa "Firmar y enviar" de nuevo en unos segundos.', 'warning', 8000);
     } else {
       toast('Error: ' + err.message, 'error');
     }
@@ -940,6 +940,8 @@ async function handleAprobar() {
     ocultarModalAutofirma();
     if (err.code === 'CANCELLED') {
       toast('Firma cancelada.', 'warning');
+    } else if (err.code === 'CONNECTION_ERROR' || err.code === 'TIMEOUT') {
+      toast('⏳ AutoFirma está arrancando. Pulsa "Aprobar y firmar" de nuevo en unos segundos.', 'warning', 8000);
     } else {
       toast('Error al firmar: ' + err.message, 'error');
     }

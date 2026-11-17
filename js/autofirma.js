@@ -5,7 +5,7 @@
 
 const AUTOFIRMA = {
   DOWNLOAD_URL: 'https://firmaelectronica.gob.es/Home/Descargas.html',
-  TIMEOUT_MS:   30000,  // 30 s — si AutoFirma no responde en 30 s, error claro
+  TIMEOUT_MS:   60000,  // 60 s — AutoFirma necesita tiempo para arrancar su servidor
   PUERTOS:      [62080, 58422, 55755, 57379, 62972, 51642, 59678, 54321],
 };
 
