@@ -59,10 +59,12 @@ try {
 
 // ── Inicializar Firebase Admin ────────────────────────────────
 const serviceAccount = JSON.parse(await readFile(keyPath, 'utf8'));
-if (!admin.apps.length) {
+try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
+} catch (e) {
+  // Ya inicializado — ignorar
 }
 const auth = admin.auth();
 const db   = admin.firestore();
