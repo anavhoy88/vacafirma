@@ -2,7 +2,7 @@
 // ═══════════════════════════════════════════════════════════════
 // importar_usuarios.mjs — SIGESPER-FFAA
 // ───────────────────────────────────────────────────────────────
-// Lee el Excel de usuarios (usuarios_vacafirma.xlsx) y crea:
+// Lee el Excel de usuarios y crea:
 //   • Una cuenta en Firebase Authentication (email + contraseña temporal)
 //   • Un documento en Firestore user_profiles/{uid}
 //
@@ -22,6 +22,10 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import XLSX from 'xlsx';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,31 +51,15 @@ if (!existsSync(keyPath)) {
   process.exit(1);
 }
 
-// ── Importar dependencias ─────────────────────────────────────
-let XLSX, admin;
-try {
-  XLSX  = (await import('xlsx')).default;
-  admin = (await import('firebase-admin')).default;
-} catch (e) {
-  console.error('❌  Dependencias no instaladas. Ejecuta: npm install xlsx firebase-admin');
-  process.exit(1);
-}
-
 // ── Inicializar Firebase Admin ────────────────────────────────
 const serviceAccount = JSON.parse(await readFile(keyPath, 'utf8'));
-try {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-} catch (e) {
-  // Ya inicializado — ignorar
-}
-const auth = admin.auth();
-const db   = admin.firestore();
+initializeApp({ credential: cert(serviceAccount) });
+const auth = getAuth();
+const db   = getFirestore();
 
 // ── Leer Excel ────────────────────────────────────────────────
-const wb   = XLSX.readFile(excelPath);
-const ws   = wb.Sheets['USUARIOS'];
+const wb = XLSX.readFile(excelPath);
+const ws = wb.Sheets['USUARIOS'];
 if (!ws) {
   console.error('❌  No se encuentra la hoja "USUARIOS" en el Excel.');
   process.exit(1);
@@ -79,32 +67,33 @@ if (!ws) {
 
 const filas = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
-// Filtrar fila de ejemplo (email contiene "ejemplo" o está vacía)
+// Filtrar fila de cabecera de ejemplo y emails vacíos/no permitidos
+const dominiosPermitidos = ['ea.mde.es', 'mde.es'];
 const usuarios = filas.filter(f => {
   const email = (f['email'] || '').toString().trim().toLowerCase();
-  return email && email !== 'juan.garcia@ejercito.es' && !email.includes('ejemplo');
+  if (!email) return false;
+  const dominio = email.split('@')[1] || '';
+  return dominiosPermitidos.includes(dominio);
 });
 
 if (!usuarios.length) {
-  console.error('❌  No se encontraron usuarios en el Excel (¿está vacío?)');
+  console.error('❌  No se encontraron usuarios con dominio @ea.mde.es o @mde.es en el Excel.');
   process.exit(1);
 }
 
-console.log(`\n📋  Usuarios encontrados: ${usuarios.length}`);
+console.log(`\n📋  Usuarios a importar: ${usuarios.length}`);
 console.log(`🔑  Contraseña temporal: ${CONTRASENA_TEMPORAL}\n`);
 
 // ── Importar ──────────────────────────────────────────────────
 let ok = 0, errores = 0;
 
 for (const fila of usuarios) {
-  const email          = (fila['email']          || '').toString().trim().toLowerCase();
+  const email           = (fila['email']           || '').toString().trim().toLowerCase();
   const nombre_completo = (fila['nombre_completo'] || '').toString().trim();
-  const dni            = (fila['dni']             || '').toString().trim().toUpperCase();
-  const empleo         = (fila['empleo']          || '').toString().trim();
-  const rol            = (fila['rol']             || 'empleado').toString().trim();
-  const seccion        = (fila['seccion']         || '').toString().trim();
-
-  if (!email) { console.warn('  ⚠️  Fila sin email, saltando.'); errores++; continue; }
+  const dni             = (fila['dni']             || '').toString().trim().toUpperCase();
+  const empleo          = (fila['empleo']          || '').toString().trim();
+  const rol             = (fila['rol']             || 'empleado').toString().trim();
+  const seccion         = (fila['seccion']         || '').toString().trim();
 
   const rolesValidos = ['empleado', 'jefe_seccion', 'jefe_grupo'];
   const rolFinal = rolesValidos.includes(rol) ? rol : 'empleado';
@@ -120,9 +109,8 @@ for (const fila of usuarios) {
     try {
       const existing = await auth.getUserByEmail(email);
       uid = existing.uid;
-      // Si ya existe, actualizar contraseña temporal igualmente
       await auth.updateUser(uid, { password: CONTRASENA_TEMPORAL });
-      process.stdout.write('[Auth: ya existía, contraseña actualizada] ');
+      process.stdout.write('[Auth: ya existía] ');
     } catch (e) {
       if (e.code === 'auth/user-not-found') {
         const newUser = await auth.createUser({
@@ -146,14 +134,13 @@ for (const fila of usuarios) {
       empleo,
       rol: rolFinal,
       activo: true,
-      primer_acceso: true,   // ← fuerza cambio de contraseña en primer login
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      primer_acceso: true,
+      updated_at: FieldValue.serverTimestamp(),
     };
     if (seccion) perfil.seccion = seccion;
 
     await db.collection('user_profiles').doc(uid).set(perfil, { merge: true });
-    process.stdout.write('[Firestore: OK]\n');
+    process.stdout.write('[Firestore: OK] ✓\n');
     ok++;
 
   } catch (err) {
@@ -162,10 +149,11 @@ for (const fila of usuarios) {
   }
 }
 
-console.log(`\n✅  Importación completada: ${ok} usuarios OK, ${errores} errores.`);
+console.log(`\n${'─'.repeat(55)}`);
+console.log(`✅  Importación completada: ${ok} OK, ${errores} errores.`);
 if (ok > 0) {
-  console.log(`\nℹ️  Todos los usuarios importados tienen:`);
+  console.log(`\nℹ️  Todos los usuarios tienen:`);
   console.log(`    • Contraseña temporal: ${CONTRASENA_TEMPORAL}`);
-  console.log(`    • primer_acceso: true → la app les pedirá cambiarla al entrar por primera vez`);
+  console.log(`    • primer_acceso: true → la app pedirá cambio en el primer login`);
 }
 console.log('');
