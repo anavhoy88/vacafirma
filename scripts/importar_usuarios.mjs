@@ -65,9 +65,22 @@ if (!ws) {
   process.exit(1);
 }
 
-const filas = XLSX.utils.sheet_to_json(ws, { defval: '' });
+// La hoja tiene una fila de título antes de los encabezados reales.
+// Buscamos la fila que contiene "email" como primera celda de encabezado.
+const rawRows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 });
+let headerRowIdx = rawRows.findIndex(r =>
+  r.some(c => c && c.toString().trim().toLowerCase() === 'email')
+);
+if (headerRowIdx === -1) headerRowIdx = 1; // fallback: fila 2
 
-// Filtrar fila de cabecera de ejemplo y emails vacíos/no permitidos
+const headers = rawRows[headerRowIdx].map(h => h.toString().trim().toLowerCase());
+const filas = rawRows.slice(headerRowIdx + 1).map(row => {
+  const obj = {};
+  headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
+  return obj;
+});
+
+// Filtrar emails vacíos y dominios no permitidos
 const dominiosPermitidos = ['ea.mde.es', 'mde.es'];
 const usuarios = filas.filter(f => {
   const email = (f['email'] || '').toString().trim().toLowerCase();
