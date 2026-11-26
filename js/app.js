@@ -124,7 +124,7 @@ function bindEvents() {
 // ══════════════════════════════════════════════════════════════
 
 async function handleGuardarContrasena() {
-  const pwdActual = $('contrasenaActual') ? $('contrasenaActual').value : '';
+  const pwdActual = $('contrasenaActual') ? $('contrasenaActual').value.trim() : '';
   const pwd1 = $('nuevaContrasena') ? $('nuevaContrasena').value : '';
   const pwd2 = $('nuevaContrasenaConfirm') ? $('nuevaContrasenaConfirm').value : '';
   if (!pwd1 || pwd1.length < 6) {
@@ -133,6 +133,12 @@ async function handleGuardarContrasena() {
   }
   if (pwd1 !== pwd2) {
     toast('Las contraseñas no coinciden.', 'error');
+    return;
+  }
+  // Si el usuario ya tiene contraseña (creado con script), el campo actual es obligatorio
+  if (!pwdActual && !usuarioSinContrasena()) {
+    toast('Debes introducir tu contraseña actual (la temporal asignada por el administrador).', 'error');
+    if ($('contrasenaActual')) $('contrasenaActual').focus();
     return;
   }
   const btn = $('btnGuardarContrasena');
