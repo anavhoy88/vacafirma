@@ -663,10 +663,12 @@ function esPrimerAcceso(profile) {
  * ha establecido su propia contraseña.
  */
 async function marcarPrimerAccesoCompletado(userId) {
-  await updateDoc(doc(_db, 'user_profiles', userId), {
+  // Usamos setDoc con merge:true para que funcione aunque el documento
+  // no exista todavía (usuario creado manualmente desde Firebase Console)
+  await setDoc(doc(_db, 'user_profiles', userId), {
     primer_acceso: false,
     updated_at: serverTimestamp(),
-  });
+  }, { merge: true });
 }
 
 // ══════════════════════════════════════════════════════════════

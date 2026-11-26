@@ -145,10 +145,13 @@ async function handleGuardarContrasena() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
     await establecerContrasena(pwd1, pwdActual || undefined);
-    // Marcar primer_acceso = false siempre que haya sesión activa,
-    // independientemente de si el perfil ya estaba cargado en memoria.
+    // Marcar primer_acceso = false en Firestore (best-effort: no bloqueamos si falla)
     if (state.user && state.user.id) {
-      await marcarPrimerAccesoCompletado(state.user.id);
+      try {
+        await marcarPrimerAccesoCompletado(state.user.id);
+      } catch (e) {
+        console.warn('[primer_acceso] No se pudo marcar en Firestore:', e.message);
+      }
     }
     if (state.profile) state.profile.primer_acceso = false;
     $('modalContrasena').classList.add('hidden');
