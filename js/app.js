@@ -139,11 +139,12 @@ async function handleGuardarContrasena() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   try {
     await establecerContrasena(pwd1, pwdActual || undefined);
-    // Si era primer acceso (contraseña temporal), marcarlo como completado en Firestore
-    if (state.profile && esPrimerAcceso(state.profile)) {
+    // Marcar primer_acceso = false siempre que haya sesión activa,
+    // independientemente de si el perfil ya estaba cargado en memoria.
+    if (state.user && state.user.id) {
       await marcarPrimerAccesoCompletado(state.user.id);
-      state.profile.primer_acceso = false;
     }
+    if (state.profile) state.profile.primer_acceso = false;
     $('modalContrasena').classList.add('hidden');
     toast('✓ Contraseña establecida. Ya puedes acceder con email y contraseña.', 'success');
   } catch (err) {
